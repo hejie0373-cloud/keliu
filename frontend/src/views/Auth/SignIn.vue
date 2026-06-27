@@ -161,12 +161,8 @@ async function handleSubmit() {
         ElMessage.warning('请输入 6 位验证码')
         return
       }
-      const result = await auth.loginByPhone(phone.value, code.value)
-      if (result.isNewUser) {
-        router.push(`/auth/signup?phone=${result.phone}&code=${code.value}`)
-      } else {
-        onLoginSuccess()
-      }
+      await auth.loginByPhone(phone.value, code.value)
+      onLoginSuccess()
     } else {
       if (!password.value) {
         ElMessage.warning('请输入密码')
@@ -209,11 +205,12 @@ onUnmounted(() => {
   <div class="auth-page">
     <section class="auth-visual">
       <div class="brand-row">
-        <img src="@/assets/keliu.png" alt="客留" class="brand-logo" />
+        <div class="brand-logo-box">
+          <img src="@/assets/keliu.png" alt="客留" class="brand-logo" />
+        </div>
         <span class="brand-name">客留</span>
       </div>
       <div class="visual-copy">
-        <span class="eyebrow">Customer retention workspace</span>
         <h1>把客户风险、营销动作和经营数据放在同一个工作台。</h1>
         <p>适合门店每天反复使用的客户运营系统，登录后即可继续处理客户跟进、AI 评分和营销活动。</p>
       </div>
@@ -328,8 +325,9 @@ onUnmounted(() => {
 .auth-visual {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  padding: 48px;
+  justify-content: flex-start;
+  gap: clamp(56px, 9vh, 92px);
+  padding: 34px 48px 42px;
   background:
     linear-gradient(135deg, rgba(0, 114, 178, 0.12), transparent 42%),
     linear-gradient(160deg, #102033 0%, #182c3a 48%, #143529 100%);
@@ -339,28 +337,37 @@ onUnmounted(() => {
 .brand-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 18px;
+}
+
+.brand-logo-box {
+  width: 300px;
+  height: 130px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.16);
 }
 
 .brand-logo {
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
-  object-fit: cover;
-  background: #fff;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .brand-name {
-  font-size: 1.15rem;
+  font-size: 2.35rem;
   font-weight: 700;
   letter-spacing: 0;
 }
 
 .visual-copy {
-  max-width: 620px;
+  max-width: 760px;
 }
 
-.eyebrow,
 .panel-kicker {
   display: inline-flex;
   margin-bottom: 14px;
@@ -669,6 +676,16 @@ onUnmounted(() => {
   .auth-visual {
     min-height: 320px;
     padding: 32px;
+    gap: 36px;
+  }
+
+  .brand-logo-box {
+    width: 230px;
+    height: 100px;
+  }
+
+  .brand-name {
+    font-size: 1.8rem;
   }
 
   .visual-metrics {
@@ -689,6 +706,16 @@ onUnmounted(() => {
 
   .visual-copy h1 {
     font-size: 1.8rem;
+  }
+
+  .brand-logo-box {
+    width: 184px;
+    height: 80px;
+    padding: 8px 12px;
+  }
+
+  .brand-name {
+    font-size: 1.5rem;
   }
 
   .visual-copy p {

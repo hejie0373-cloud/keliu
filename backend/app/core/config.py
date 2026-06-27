@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     WECHAT_APP_ID: str = ""
     WECHAT_APP_SECRET: str = ""
     WECHAT_REDIRECT_URI: str = ""
+    WECHAT_ADMIN_PHONE: str = "18626834206"
 
     # 支付宝沙箱支付
     ALIPAY_APP_ID: str = ""

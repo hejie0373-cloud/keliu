@@ -90,3 +90,30 @@ a { color: var(--accent); text-decoration: none; }
 
 .empty-state { text-align: center; padding: var(--space-2xl) var(--space-lg); color: var(--ink-muted); }
 .empty-state-icon { font-size: 3rem; margin-bottom: var(--space-md); opacity: 0.4; }
+
+/* ============================================================
+   管理员端 Dark Theme (Command Center)
+   路由 /admin/* 下自动启用
+   ============================================================ */
+
+body:has(.admin-route) {
+  --admin-bg: #f4f6f9;
+  --admin-surface: #ffffff;
+  --admin-border: #e2e6ed;
+  --admin-text: #1a1d23;
+  --admin-text-secondary: #6b7280;
+  --admin-accent: #1a73e8;
+  --admin-accent-light: #e8f0fe;
+  --admin-teal: #0d9488;
+  --admin-teal-light: #e6f7f5;
+  --admin-amber: #d97706;
+  --admin-amber-light: #fef3c7;
+  --admin-red: #dc2626;
+  --admin-red-light: #fef2f2;
+  --admin-green: #059669;
+  --admin-green-light: #ecfdf5;
+  --admin-purple: #7c3aed;
+  --admin-purple-light: #f5f3ff;
+  background: var(--admin-bg);
+  color: var(--admin-text);
+}

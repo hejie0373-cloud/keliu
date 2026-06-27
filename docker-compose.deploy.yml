@@ -1,0 +1,75 @@
+# ══════════════════════════════════════════════════════
+# 部署 override — 配合 docker-compose.yml 使用
+#
+#   docker compose -f docker-compose.yml -f docker-compose.deploy.yml up -d
+#
+# 部署前准备：
+#   1. 复制 backend/.env.prod.example → backend/.env.prod 并填写真实配置
+#   2. 根目录 .env 中设置 MYSQL_ROOT_PASSWORD 强密码
+#   3. 设置 DOCKER_DB_URL 或 DB_URL 指向容器内 MySQL
+# ══════════════════════════════════════════════════════
+
+services:
+  # 数据库不对外暴露
+  mysql:
+    ports: []
+    expose:
+      - "3306"
+    restart: always
+
+  redis:
+    ports: []
+    expose:
+      - "6379"
+    restart: always
+
+  elasticsearch:
+    ports: []
+    expose:
+      - "9200"
+    restart: always
+
+  # 后端去掉热重载、代码挂载，换生产配置
+  backend:
+    ports: []
+    expose:
+      - "8009"
+    volumes: []
+    env_file:
+      - ./backend/.env.prod
+    environment:
+      - DB_URL=mysql+aiomysql://root:${MYSQL_ROOT_PASSWORD}@mysql:3306/keliudb
+      - REDIS_URL=redis://redis:6379/0
+      - ES_URL=http://elasticsearch:9200
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8009
+    restart: always
+
+  celery-worker:
+    volumes: []
+    env_file:
+      - ./backend/.env.prod
+    environment:
+      - DB_URL=mysql+aiomysql://root:${MYSQL_ROOT_PASSWORD}@mysql:3306/keliudb
+      - REDIS_URL=redis://redis:6379/0
+      - ES_URL=http://elasticsearch:9200
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: always
+
+  celery-beat:
+    volumes: []
+    env_file:
+      - ./backend/.env.prod
+    environment:
+      - DB_URL=mysql+aiomysql://root:${MYSQL_ROOT_PASSWORD}@mysql:3306/keliudb
+      - REDIS_URL=redis://redis:6379/0
+      - ES_URL=http://elasticsearch:9200
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: always
+
+  nginx:
+    profiles: []
+    restart: always

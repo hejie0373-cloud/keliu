@@ -85,7 +85,10 @@ async def login_by_phone(
     result = await db.execute(select(User).where(User.phone == phone))
     user = result.scalar_one_or_none()
     if not user:
-        return {"is_new_user": True, "phone": phone}
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="该手机号未注册，请先注册账号",
+        )
 
     if not user.is_active:
         raise HTTPException(

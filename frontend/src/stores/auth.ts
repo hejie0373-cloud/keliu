@@ -18,15 +18,8 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function loginByPhone(phone: string, code: string) {
     const { data } = await authApi.loginByPhone(phone, code)
-    // 新用户 → 返回 isNewUser 标记，不设置 tokens
-    if ('isNewUser' in data && data.isNewUser) {
-      return { isNewUser: true, phone: data.phone }
-    }
-    // 老用户 → 设置 tokens
-    const tokens = data as TokenResponse
-    setTokens(tokens.accessToken, tokens.refreshToken)
+    setTokens(data.accessToken, data.refreshToken)
     await fetchMe()
-    return { isNewUser: false }
   }
 
   async function loginByPassword(phone: string, password: string) {

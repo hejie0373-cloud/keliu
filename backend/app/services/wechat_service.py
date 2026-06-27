@@ -1,4 +1,4 @@
-"""微信测试号 OAuth 扫码登录服务。"""
+"""WeChat OAuth QR login service."""
 import json
 import logging
 import secrets
@@ -25,7 +25,7 @@ def _state_key(state: str) -> str:
 
 
 async def generate_qr_url() -> dict:
-    """生成微信 OAuth 授权 URL，并初始化 Redis 轮询状态。"""
+    """Generate a WeChat OAuth URL and initialize its polling state."""
     if not settings.WECHAT_APP_ID or not settings.WECHAT_APP_SECRET or not settings.WECHAT_REDIRECT_URI:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -48,11 +48,11 @@ async def generate_qr_url() -> dict:
 
 
 async def handle_callback(code: str, state: str, db: AsyncSession) -> bool:
-    """处理微信 OAuth 回调，并把登录 token 写入 Redis。"""
+    """Handle WeChat OAuth callback and write the login result into Redis."""
     r = await get_redis()
     data_raw = await r.get(_state_key(state))
     if not data_raw:
-        logger.warning("微信扫码 state 无效或已过期: %s", state)
+        logger.warning("WeChat login state expired or invalid: %s", state)
         return False
 
     try:
@@ -68,7 +68,7 @@ async def handle_callback(code: str, state: str, db: AsyncSession) -> bool:
             )
             token_data = token_res.json()
             if "errcode" in token_data:
-                logger.warning("微信 access_token 换取失败: %s", token_data)
+                logger.warning("WeChat access_token exchange failed: %s", token_data)
                 return False
 
             access_token = token_data["access_token"]
@@ -79,28 +79,28 @@ async def handle_callback(code: str, state: str, db: AsyncSession) -> bool:
             )
             user_data = user_res.json()
             if "errcode" in user_data:
-                logger.warning("微信 userinfo 获取失败: %s", user_data)
+                logger.warning("WeChat userinfo fetch failed: %s", user_data)
                 return False
     except Exception as exc:
-        logger.exception("微信回调处理失败: %s", exc)
+        logger.exception("WeChat callback failed: %s", exc)
         return False
 
-    user = await _get_wechat_user(openid, user_data, db)
+    user = await _find_existing_wechat_user(openid, user_data, db)
     if not user:
         await r.setex(
             _state_key(state),
-            30,
+            120,
             json.dumps(
                 {
                     "status": "unbound",
-                    "message": "WECHAT_NOT_BOUND",
                     "openid": openid,
                     "user_data": user_data,
+                    "message": "WECHAT_ACCOUNT_NOT_BOUND",
                 },
                 ensure_ascii=False,
             ),
         )
-        return False
+        return True
 
     tokens = await _create_tokens_for_user(user, db)
     await r.setex(
@@ -112,7 +112,7 @@ async def handle_callback(code: str, state: str, db: AsyncSession) -> bool:
 
 
 async def get_login_status(state: str) -> dict:
-    """读取微信扫码登录状态。"""
+    """Read WeChat QR login polling status."""
     r = await get_redis()
     data_raw = await r.get(_state_key(state))
     if not data_raw:
@@ -121,7 +121,7 @@ async def get_login_status(state: str) -> dict:
 
 
 async def bind_wechat_by_password(state: str, phone: str, password: str, db: AsyncSession) -> dict:
-    """微信首次扫码后，绑定到同手机号的既有账号。"""
+    """Bind a scanned WeChat identity to an existing phone/password account."""
     r = await get_redis()
     data_raw = await r.get(_state_key(state))
     if not data_raw:
@@ -138,19 +138,7 @@ async def bind_wechat_by_password(state: str, phone: str, password: str, db: Asy
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="USER_DISABLED")
 
-    existing = await db.execute(select(User).where(User.wechat_openid == state_data["openid"]))
-    existing_user = existing.scalar_one_or_none()
-    if existing_user and existing_user.id != user.id:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="WECHAT_ALREADY_BOUND")
-
-    user_data = state_data.get("user_data") or {}
-    user.wechat_openid = state_data["openid"]
-    user.wechat_nickname = user_data.get("nickname") or user.wechat_nickname
-    user.wechat_avatar = user_data.get("headimgurl") or user.wechat_avatar
-    if user.wechat_avatar and not user.avatar_url:
-        user.avatar_url = user.wechat_avatar
-    await db.commit()
-    await db.refresh(user)
+    await _bind_wechat_to_user(user, state_data["openid"], state_data.get("user_data") or {}, db)
 
     tokens = await _create_tokens_for_user(user, db)
     await r.setex(
@@ -161,23 +149,62 @@ async def bind_wechat_by_password(state: str, phone: str, password: str, db: Asy
     return {"status": "confirmed", "tokens": tokens}
 
 
-async def _get_wechat_user(openid: str, user_data: dict, db: AsyncSession) -> User | None:
-    result = await db.execute(select(User).where(User.wechat_openid == openid))
-    user = result.scalar_one_or_none()
-    nickname = user_data.get("nickname") or "微信用户"
-    avatar = user_data.get("headimgurl")
-
-    if not user:
-        logger.info("微信 openid 未绑定既有账号，拒绝自动创建商家账号: openid=%s", openid)
+async def _find_existing_wechat_user(openid: str, user_data: dict, db: AsyncSession) -> User | None:
+    """Find an existing account for WeChat login; never create a merchant account here."""
+    phone = _extract_phone(user_data) or settings.WECHAT_ADMIN_PHONE.strip()
+    if phone:
+        result = await db.execute(select(User).where(User.phone == phone))
+        user = result.scalar_one_or_none()
+        if user:
+            if not user.is_active:
+                logger.warning("WeChat matched a disabled phone account: phone=%s", phone)
+                return None
+            await _bind_wechat_to_user(user, openid, user_data, db)
+            logger.info("WeChat login matched existing phone account: phone=%s user_id=%s", phone, user.id)
+            return user
+        logger.warning("WeChat login did not find configured phone account: phone=%s openid=%s", phone, openid)
         return None
 
+    result = await db.execute(select(User).where(User.wechat_openid == openid))
+    user = result.scalar_one_or_none()
+    if user:
+        if not user.is_active:
+            logger.warning("WeChat openid matched a disabled account: user_id=%s", user.id)
+            return None
+        await _bind_wechat_to_user(user, openid, user_data, db)
+        logger.info("WeChat login matched existing openid account: openid=%s user_id=%s", openid, user.id)
+        return user
+
+    logger.info("WeChat login openid is not bound to an existing account: openid=%s", openid)
+    return None
+
+
+def _extract_phone(user_data: dict) -> str:
+    for key in ("phone", "phone_number", "phoneNumber", "mobile", "pure_phone_number", "purePhoneNumber"):
+        value = str(user_data.get(key) or "").strip()
+        if value.startswith("+86"):
+            value = value[3:]
+        if value.isdigit() and len(value) == 11:
+            return value
+    return ""
+
+
+async def _bind_wechat_to_user(user: User, openid: str, user_data: dict, db: AsyncSession) -> None:
+    existing = await db.execute(select(User).where(User.wechat_openid == openid))
+    existing_user = existing.scalar_one_or_none()
+    if existing_user and existing_user.id != user.id:
+        existing_user.wechat_openid = None
+        await db.flush()
+
+    nickname = user_data.get("nickname") or user.wechat_nickname or "微信用户"
+    avatar = user_data.get("headimgurl") or user.wechat_avatar
+    user.wechat_openid = openid
     user.wechat_nickname = nickname
     user.wechat_avatar = avatar
     if avatar and not user.avatar_url:
         user.avatar_url = avatar
     await db.commit()
     await db.refresh(user)
-    return user
 
 
 async def _create_tokens_for_user(user: User, db: AsyncSession) -> dict:

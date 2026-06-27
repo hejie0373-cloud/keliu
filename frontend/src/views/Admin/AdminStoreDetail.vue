@@ -15,283 +15,169 @@ const loading = ref(true)
 const saving = ref(false)
 const ordersLoading = ref(false)
 const orderTotal = ref(0)
-const restrictVisible = ref(false)
 const restrictionSaving = ref(false)
-const restrictions = reactive({
-  ai: false,
-  campaign: false,
-  export: false,
-})
+const restrictions = reactive({ ai: false, campaign: false, export: false })
 
-const subForm = reactive({
-  planName: 'free',
-  status: 'active',
-  customerLimit: 1000,
-  nextBillingDate: null as string | null,
-})
-
+const subForm = reactive({ planName: 'free', status: 'active', customerLimit: 1000, nextBillingDate: null as string | null })
 const planOpts = [
-  { value: 'free', label: '免费版' },
-  { value: 'basic', label: '基础版 ¥19.9' },
-  { value: 'professional', label: '专业版 ¥49.9' },
+  { value: 'free', label: '免费版' }, { value: 'basic', label: '基础版 ¥19.9' }, { value: 'professional', label: '专业版 ¥49.9' },
 ]
 const statusOpts = [
-  { value: 'active', label: '已激活' },
-  { value: 'overdue', label: '已过期' },
-  { value: 'cancelled', label: '已取消' },
+  { value: 'active', label: '已激活' }, { value: 'overdue', label: '已过期' }, { value: 'cancelled', label: '已取消' },
 ]
-const statusLabels: Record<string, string> = {
-  pending: '待支付', paid: '已支付', failed: '失败', cancelled: '取消', expired: '过期',
-}
+const statusLabels: Record<string, string> = { pending: '待支付', paid: '已支付', failed: '失败', cancelled: '取消', expired: '过期' }
 function money(c: number) { return `¥${(c / 100).toFixed(2)}` }
-function statusType(v: string) {
-  if (v === 'paid' || v === 'active') return 'success'
-  if (v === 'pending' || v === 'trial') return 'warning'
-  if (v === 'failed' || v === 'overdue') return 'danger'
-  return 'info'
+function stag(v: string) {
+  if (v === 'paid' || v === 'active') return 'tag-ok'
+  if (v === 'pending' || v === 'trial') return 'tag-warn'
+  if (v === 'failed' || v === 'overdue') return 'tag-bad'
+  return 'tag-dim'
+}
+function formatTime(value: string | null) {
+  if (!value) return '-'
+  const d = new Date(value + 'Z')
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
 function fillSub(sub: any) {
-  subForm.planName = sub?.planName || sub?.plan || 'free'
-  subForm.status = sub?.status || 'active'
-  subForm.customerLimit = sub?.customerLimit || 1000
-  subForm.nextBillingDate = sub?.nextBillingDate || null
-  // 解析限制
+  subForm.planName = sub?.planName || sub?.plan || 'free'; subForm.status = sub?.status || 'active'
+  subForm.customerLimit = sub?.customerLimit || 1000; subForm.nextBillingDate = sub?.nextBillingDate || null
   const restr = (sub?.restrictions || '').split(',').filter(Boolean)
-  restrictions.ai = restr.includes('ai')
-  restrictions.campaign = restr.includes('campaign')
-  restrictions.export = restr.includes('export')
+  restrictions.ai = restr.includes('ai'); restrictions.campaign = restr.includes('campaign'); restrictions.export = restr.includes('export')
 }
 
 async function saveRestrictions() {
   restrictionSaving.value = true
   try {
-    const list = []
-    if (restrictions.ai) list.push('ai')
-    if (restrictions.campaign) list.push('campaign')
-    if (restrictions.export) list.push('export')
+    const list = []; if (restrictions.ai) list.push('ai'); if (restrictions.campaign) list.push('campaign'); if (restrictions.export) list.push('export')
     await http.put(`/admin/stores/${storeId}/restrictions`, null, { params: { restrictions: list.join(',') } })
-    ElMessage.success('限制已更新')
-    await loadStore()
+    ElMessage.success('限制已更新'); await loadStore()
   } finally { restrictionSaving.value = false }
 }
-
-async function loadStore() {
-  const { data } = await http.get(`/admin/stores/${storeId}`)
-  store.value = data
-  fillSub(data.subscription)
-}
+async function loadStore() { const { data } = await http.get(`/admin/stores/${storeId}`); store.value = data; fillSub(data.subscription) }
 async function loadOrders() {
   ordersLoading.value = true
-  try {
-    const { data } = await billingApi.listStoreOrders(storeId, { page: 1, pageSize: 10 })
-    orders.value = data.items; orderTotal.value = data.total
-  } finally { ordersLoading.value = false }
+  try { const { data } = await billingApi.listStoreOrders(storeId, { page: 1, pageSize: 10 }); orders.value = data.items; orderTotal.value = data.total } finally { ordersLoading.value = false }
 }
-async function reload() {
-  loading.value = true
-  try { await Promise.all([loadStore(), loadOrders()]) } finally { loading.value = false }
-}
-
-// 用户管控
-async function toggleUser(uid: string) {
-  await http.put(`/admin/users/${uid}/toggle`)
-  ElMessage.success('用户状态已切换')
-  await loadStore()
-}
+async function reload() { loading.value = true; try { await Promise.all([loadStore(), loadOrders()]) } finally { loading.value = false } }
+async function toggleUser(uid: string) { await http.put(`/admin/users/${uid}/toggle`); ElMessage.success('用户状态已切换'); await loadStore() }
 async function deleteUser(uid: string, name: string) {
   await ElMessageBox.confirm(`确定删除用户「${name}」？此操作不可恢复`, '删除用户', { type: 'warning', confirmButtonText: '删除' })
-  await http.delete(`/admin/users/${uid}`)
-  ElMessage.success('已删除')
-  await loadStore()
+  await http.delete(`/admin/users/${uid}`); ElMessage.success('已删除'); await loadStore()
 }
-
-// 订阅保存
 async function saveSub() {
   saving.value = true
   try {
     await billingApi.updateStoreSubscription(storeId, {
-      planName: subForm.planName as 'free' | 'basic' | 'professional',
-      status: subForm.status as 'active' | 'overdue' | 'cancelled',
-      customerLimit: subForm.customerLimit,
-      nextBillingDate: subForm.nextBillingDate,
+      planName: subForm.planName as any, status: subForm.status as any, customerLimit: subForm.customerLimit, nextBillingDate: subForm.nextBillingDate,
     })
-    ElMessage.success('已更新')
-    await loadStore()
+    ElMessage.success('已更新'); await loadStore()
   } finally { saving.value = false }
 }
-
-// 店铺管控
 async function handleRestrict() {
   if (!store.value) return
-  const owner = store.value.owner
-  const staff = store.value.staff || []
+  const owner = store.value.owner; const staff = store.value.staff || []
   const allUsers = owner ? [owner, ...staff] : staff
-
   const activeCount = allUsers.filter((u: any) => u.isActive).length
-  const action = activeCount > 0
-    ? '禁用后该店铺所有用户将无法登录和操作，确定继续？'
-    : '启用后该店铺所有用户将恢复登录权限，确定继续？'
-
-  await ElMessageBox.confirm(action, activeCount ? '禁用店铺' : '启用店铺', {
-    type: 'warning',
-    confirmButtonText: activeCount ? '确认禁用' : '确认启用',
-    cancelButtonText: '取消',
-  })
-  await http.put(`/admin/stores/${storeId}/toggle`)
-  ElMessage.success(activeCount ? '店铺已禁用' : '店铺已启用')
-  await loadStore()
+  const action = activeCount > 0 ? '禁用后该店铺所有用户将无法登录和操作，确定继续？' : '启用后该店铺所有用户将恢复登录权限，确定继续？'
+  await ElMessageBox.confirm(action, activeCount ? '禁用店铺' : '启用店铺', { type: 'warning', confirmButtonText: activeCount ? '确认禁用' : '确认启用', cancelButtonText: '取消' })
+  await http.put(`/admin/stores/${storeId}/toggle`); ElMessage.success(activeCount ? '店铺已禁用' : '店铺已启用'); await loadStore()
 }
-
-function activeCount(list: any[]) {
-  return list?.filter((u: any) => u.isActive)?.length || 0
-}
+function activeCount(list: any[]) { return list?.filter((u: any) => u.isActive)?.length || 0 }
 
 onMounted(reload)
 </script>
 
 <template>
-  <div class="store-detail" v-loading="loading">
-    <button class="back-btn" @click="$router.push('/admin/stores')">
-      ← 返回店铺列表
-    </button>
+  <div class="admin-route page" v-loading="loading">
+    <button class="back-link" @click="$router.push('/admin/stores')">← 返回店铺列表</button>
 
     <template v-if="store">
-      <!-- 头部 -->
-      <header class="detail-hero">
+      <header class="hero-bar">
         <div class="hero-left">
-          <div class="hero-icon">{{ store.name[0] }}</div>
+          <div class="avatar">{{ store.name[0] }}</div>
           <div>
-            <span class="hero-kicker">店铺详情</span>
-            <h1 class="hero-name">{{ store.name }}</h1>
-            <p class="hero-meta">{{ store.industryType || '未知行业' }} · {{ store.address || '未填地址' }} · {{ store.createdAt?.slice(0,10) }}</p>
+            <h1>{{ store.name }}</h1>
+            <span class="hero-meta">{{ store.industryType || '未知行业' }} · {{ store.address || '未填地址' }} · 创建于 {{ store.createdAt?.slice(0,10) || '-' }}</span>
           </div>
         </div>
         <div class="hero-right">
-          <span class="status-dot" :class="store.subscription?.isActive ? 'on' : 'off'" />
-          <span>{{ store.subscription?.isActive ? '正常运营' : '已停用' }}</span>
+          <span class="dot" :class="store.subscription?.isActive ? 'on' : 'off'" />
+          {{ store.subscription?.isActive ? '正常运营' : '已停用' }}
         </div>
       </header>
 
-      <div class="detail-body">
-        <!-- 左：订阅 + 管控 -->
-        <div class="detail-left">
-          <!-- 订阅 -->
-          <section class="panel">
-            <h3 class="panel-title">订阅管理</h3>
-            <el-form label-position="top" size="large">
-              <el-form-item label="套餐">
-                <el-select v-model="subForm.planName" style="width:100%">
-                  <el-option v-for="o in planOpts" :key="o.value" :label="o.label" :value="o.value" />
-                </el-select>
-              </el-form-item>
-              <el-form-item label="状态">
-                <el-select v-model="subForm.status" style="width:100%">
-                  <el-option v-for="o in statusOpts" :key="o.value" :label="o.label" :value="o.value" />
-                </el-select>
-              </el-form-item>
-              <el-form-item label="客户上限">
-                <el-input-number v-model="subForm.customerLimit" :min="0" :max="99999" style="width:100%" />
-              </el-form-item>
-              <el-form-item label="到期日期">
-                <el-date-picker v-model="subForm.nextBillingDate" type="date" value-format="YYYY-MM-DD" style="width:100%" />
-              </el-form-item>
-              <el-button type="primary" :loading="saving" @click="saveSub" style="width:100%">保存</el-button>
-            </el-form>
+      <div class="body-grid">
+        <div class="col">
+          <!-- Subscription -->
+          <section class="card">
+            <h3 class="card-title">订阅管理</h3>
+            <div class="fg"><label>套餐</label><el-select v-model="subForm.planName" style="width:100%"><el-option v-for="o in planOpts" :key="o.value" :label="o.label" :value="o.value" /></el-select></div>
+            <div class="fg"><label>状态</label><el-select v-model="subForm.status" style="width:100%"><el-option v-for="o in statusOpts" :key="o.value" :label="o.label" :value="o.value" /></el-select></div>
+            <div class="fg"><label>客户上限</label><el-input-number v-model="subForm.customerLimit" :min="0" :max="99999" style="width:100%" /></div>
+            <div class="fg"><label>到期日期</label><el-date-picker v-model="subForm.nextBillingDate" type="date" value-format="YYYY-MM-DD" style="width:100%" /></div>
+            <button class="btn-primary" :disabled="saving" @click="saveSub">{{ saving ? '保存中...' : '保存订阅' }}</button>
           </section>
 
-          <!-- 店铺管控 -->
-          <section class="panel">
-            <div class="panel-title-row">
-              <h3 class="panel-title">店铺管控</h3>
-              <el-button
-                :type="activeCount(store.staff) > 0 || store.owner?.isActive ? 'danger' : 'success'"
-                size="small"
-                @click="handleRestrict"
-              >
+          <!-- Restrictions -->
+          <section class="card">
+            <div class="card-head">
+              <h3 class="card-title">功能限制</h3>
+              <button :class="['btn-sm', activeCount(store.staff) > 0 || store.owner?.isActive ? 'btn-danger' : 'btn-ok']" @click="handleRestrict">
                 {{ activeCount(store.staff) > 0 || store.owner?.isActive ? '禁用店铺' : '启用店铺' }}
-              </el-button>
+              </button>
             </div>
-            <p class="panel-desc">禁用后该店铺所有人员将无法登录，客户数据保留。</p>
+            <p class="card-desc">禁用后该店铺所有人员将无法登录，客户数据保留。</p>
+            <div class="rlist">
+              <label :class="['rchip', { on: restrictions.ai }]"><input type="checkbox" v-model="restrictions.ai" /><span class="rcb" /><div><strong>AI 评分/文案</strong><small>禁止流失分析和文案生成</small></div></label>
+              <label :class="['rchip', { on: restrictions.campaign }]"><input type="checkbox" v-model="restrictions.campaign" /><span class="rcb" /><div><strong>营销活动</strong><small>禁止创建和发送营销活动</small></div></label>
+              <label :class="['rchip', { on: restrictions.export }]"><input type="checkbox" v-model="restrictions.export" /><span class="rcb" /><div><strong>数据导出</strong><small>禁止导出 CSV 文件</small></div></label>
+            </div>
+            <button class="btn-secondary" :disabled="restrictionSaving" @click="saveRestrictions" style="margin-top:12px;width:100%">{{ restrictionSaving ? '保存中...' : '保存限制' }}</button>
 
-            <!-- 人员列表 -->
-            <div class="user-list">
-              <!-- 店主 -->
-              <div v-if="store.owner" class="user-row">
-                <div class="user-info">
-                  <div class="user-avatar">{{ store.owner.name[0] }}</div>
-                  <div>
-                    <strong>{{ store.owner.name }}</strong>
-                    <span class="user-phone">{{ store.owner.phone }}</span>
+            <div class="user-section">
+              <h4>店铺人员</h4>
+              <div class="user-list">
+                <div v-if="store.owner" class="user-row">
+                  <div class="user-info"><div class="uav owner-av">{{ store.owner.name[0] }}</div><div><strong>{{ store.owner.name }}</strong><span>{{ store.owner.phone }}</span></div></div>
+                  <div class="user-actions">
+                    <span :class="['tag', store.owner.isActive ? 'tag-ok' : 'tag-bad']">{{ store.owner.isActive ? '正常' : '禁用' }}</span>
+                    <span class="role-tag">店主</span>
+                    <button class="minibtn" @click="toggleUser(store.owner.id)">{{ store.owner.isActive ? '禁用' : '启用' }}</button>
                   </div>
                 </div>
-                <div class="user-actions">
-                  <el-tag :type="store.owner.isActive ? 'success' : 'danger'" size="small" effect="dark">
-                    {{ store.owner.isActive ? '正常' : '禁用' }}
-                  </el-tag>
-                  <span class="role-tag">店主</span>
-                  <el-button text size="small" @click="toggleUser(store.owner.id)">
-                    {{ store.owner.isActive ? '禁用' : '启用' }}
-                  </el-button>
-                </div>
-              </div>
-              <!-- 店员 -->
-              <div v-for="s in store.staff" :key="s.id" class="user-row">
-                <div class="user-info">
-                  <div class="user-avatar staff-avatar">{{ s.name[0] }}</div>
-                  <div>
-                    <strong>{{ s.name }}</strong>
-                    <span class="user-phone">{{ s.phone }}</span>
+                <div v-for="s in store.staff" :key="s.id" class="user-row">
+                  <div class="user-info"><div class="uav staff-av">{{ s.name[0] }}</div><div><strong>{{ s.name }}</strong><span>{{ s.phone }}</span></div></div>
+                  <div class="user-actions">
+                    <span :class="['tag', s.isActive ? 'tag-ok' : 'tag-bad']">{{ s.isActive ? '正常' : '禁用' }}</span>
+                    <button class="minibtn" @click="toggleUser(s.id)">{{ s.isActive ? '禁用' : '启用' }}</button>
+                    <button class="minibtn del" @click="deleteUser(s.id, s.name)">删除</button>
                   </div>
-                </div>
-                <div class="user-actions">
-                  <el-tag :type="s.isActive ? 'success' : 'danger'" size="small" effect="dark">
-                    {{ s.isActive ? '正常' : '禁用' }}
-                  </el-tag>
-                  <el-button text size="small" @click="toggleUser(s.id)">
-                    {{ s.isActive ? '禁用' : '启用' }}
-                  </el-button>
-                  <el-button text size="small" type="danger" @click="deleteUser(s.id, s.name)">删除</el-button>
                 </div>
               </div>
             </div>
           </section>
         </div>
 
-        <!-- 右：客户 + 支付 -->
-        <div class="detail-right">
-          <!-- 客户 -->
-          <section class="panel">
-            <h3 class="panel-title">客户列表 · {{ store.customerCount }} 人</h3>
-            <div v-for="c in store.customers?.slice(0, 20)" :key="c.id" class="customer-row">
-              <span class="cust-name">{{ c.name }}</span>
-              <span class="cust-meta">{{ c.phone }} · {{ c.gender === 'male' ? '男' : '女' }}</span>
-            </div>
-            <p v-if="store.customerCount > 20" class="panel-more">... 还有 {{ store.customerCount - 20 }} 位客户</p>
+        <div class="col">
+          <!-- Customers -->
+          <section class="card">
+            <h3 class="card-title">客户列表 · {{ store.customerCount }} 人</h3>
+            <div v-for="c in store.customers?.slice(0, 20)" :key="c.id" class="cust-row"><span class="cn">{{ c.name }}</span><span class="cm">{{ c.phone }} · {{ c.gender === 'male' ? '男' : '女' }}</span></div>
+            <p v-if="store.customerCount > 20" class="more">... 还有 {{ store.customerCount - 20 }} 位客户</p>
           </section>
 
-          <!-- 支付 -->
-          <section class="panel">
-            <div class="panel-title-row">
-              <h3 class="panel-title">支付历史 · {{ orderTotal }} 条</h3>
-              <el-button text size="small" @click="loadOrders">刷新</el-button>
+          <!-- Orders -->
+          <section class="card">
+            <div class="card-head"><h3 class="card-title">支付历史 · {{ orderTotal }} 条</h3><button class="minibtn" @click="loadOrders">刷新</button></div>
+            <div class="mini-table-wrap">
+              <table class="mini-table"><thead><tr><th>套餐</th><th>金额</th><th>状态</th><th>时间</th></tr></thead>
+                <tbody>
+                  <tr v-for="o in orders" :key="o.id"><td>{{ planOpts.find(p => p.value === o.planName)?.label || o.planName }}</td><td class="mono">{{ money(o.amountCents) }}</td><td><span :class="['tag', stag(o.status)]">{{ statusLabels[o.status] || o.status }}</span></td><td class="mono time">{{ formatTime(o.createdAt) }}</td></tr>
+                </tbody>
+              </table>
             </div>
-            <el-table :data="orders" v-loading="ordersLoading" size="small">
-              <el-table-column label="套餐" width="100">
-                <template #default="{ row }">{{ planOpts.find(p => p.value === row.planName)?.label || row.planName }}</template>
-              </el-table-column>
-              <el-table-column label="金额" width="90">
-                <template #default="{ row }">{{ money(row.amountCents) }}</template>
-              </el-table-column>
-              <el-table-column label="状态" width="80">
-                <template #default="{ row }">
-                  <el-tag :type="statusType(row.status)" size="small">{{ statusLabels[row.status] || row.status }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column label="时间" min-width="150">
-                <template #default="{ row }">{{ row.createdAt?.replace('T',' ').slice(0,19) || '-' }}</template>
-              </el-table-column>
-            </el-table>
           </section>
         </div>
       </div>
@@ -300,115 +186,108 @@ onMounted(reload)
 </template>
 
 <style scoped>
-.store-detail {
-  padding: 24px;
-}
-
-.back-btn {
-  background: none;
-  border: none;
-  color: #6b7280;
-  cursor: pointer;
-  padding: 0;
-  margin-bottom: 16px;
-  font-size: 0.9rem;
-}
-
-.back-btn:hover { color: #0072b2; }
+.page { padding: 16px 24px 40px; }
+.back-link { display: inline-block; background: none; border: none; color: var(--admin-text-secondary); font-size: 0.84rem; cursor: pointer; padding: 0; margin-bottom: 14px; transition: color 0.15s; }
+.back-link:hover { color: var(--admin-accent); }
 
 /* Hero */
-.detail-hero {
-  display: flex; align-items: center; justify-content: space-between;
-  background: #fff; border: 1px solid #e3e8ef; border-radius: 8px;
-  padding: 24px; margin-bottom: 18px; box-shadow: 0 1px 3px rgba(15,23,42,0.03);
-}
-.hero-left { display: flex; align-items: center; gap: 16px; }
-.hero-icon {
-  width: 52px; height: 52px; border-radius: 50%;
-  background: #0072b2;
-  color: #fff; display: flex; align-items: center; justify-content: center;
-  font-size: 1.3rem; font-weight: 700;
-}
-.hero-kicker { color: #0072b2; font-size: 0.78rem; font-weight: 800; }
-.hero-name { font-size: 1.25rem; font-weight: 700; color: #111827; margin: 5px 0 0; }
-.hero-meta { font-size: 0.85rem; color: #9ca3af; margin: 4px 0 0; }
-.hero-right { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; color: #374151; }
-.status-dot { width: 8px; height: 8px; border-radius: 50%; }
-.status-dot.on { background: #009e73; }
-.status-dot.off { background: #d55e00; }
+.hero-bar { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; margin-bottom: 18px; background: var(--admin-surface); border: 1px solid var(--admin-border); border-radius: 8px; }
+.hero-left { display: flex; align-items: center; gap: 14px; }
+.avatar { width: 44px; height: 44px; border-radius: 10px; background: var(--admin-accent); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; font-weight: 800; }
+.hero-bar h1 { margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--admin-text); }
+.hero-meta { font-size: 0.78rem; color: var(--admin-text-secondary); }
+.hero-right { display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: var(--admin-text-secondary); }
+.dot { width: 8px; height: 8px; border-radius: 50%; }
+.dot.on { background: var(--admin-green); }
+.dot.off { background: var(--admin-red); }
 
-/* Body */
-.detail-body { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
-@media (max-width: 860px) { .detail-body { grid-template-columns: 1fr; } }
+/* Grid */
+.body-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+@media (max-width: 860px) { .body-grid { grid-template-columns: 1fr; } }
+.col { display: flex; flex-direction: column; gap: 14px; }
 
-/* Panel */
-.panel { background: #fff; border: 1px solid #e3e8ef; border-radius: 8px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(15,23,42,0.03); }
-.panel-title { font-size: 0.98rem; font-weight: 700; color: #111827; margin: 0; }
-.panel-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-.panel-title-row .panel-title { margin-bottom: 0; }
-.panel-desc { font-size: 0.82rem; color: #9CA3AF; margin: 8px 0 16px; line-height: 1.5; }
-.panel-more { text-align: center; font-size: 0.82rem; color: #9CA3AF; padding-top: 8px; }
+/* Card */
+.card { background: var(--admin-surface); border: 1px solid var(--admin-border); border-radius: 8px; padding: 18px 20px; }
+.card-title { margin: 0 0 16px; font-size: 0.9rem; font-weight: 700; color: var(--admin-text); }
+.card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.card-head .card-title { margin-bottom: 0; }
+.card-desc { margin: 0 0 14px; font-size: 0.78rem; color: var(--admin-text-secondary); }
 
-/* User list */
-.user-list { border-top: 1px solid #F3F4F6; }
-.user-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid #F3F4F6; gap: 12px; }
+/* Forms */
+.fg { margin-bottom: 12px; }
+.fg label { display: block; margin-bottom: 5px; font-size: 0.74rem; font-weight: 700; color: var(--admin-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* Buttons */
+.btn-primary { width: 100%; padding: 10px; border: none; border-radius: 6px; background: var(--admin-accent); color: #fff; font-size: 0.86rem; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+.btn-primary:hover { background: #1557b0; }
+.btn-primary:disabled { opacity: 0.5; cursor: default; }
+.btn-secondary { padding: 8px 14px; border: 1px solid var(--admin-border); border-radius: 6px; background: var(--admin-surface); color: var(--admin-text-secondary); font-size: 0.82rem; cursor: pointer; transition: all 0.15s; }
+.btn-secondary:hover { border-color: var(--admin-accent); color: var(--admin-accent); }
+.btn-sm { padding: 4px 12px; border-radius: 4px; border: 1px solid; font-size: 0.74rem; font-weight: 600; cursor: pointer; transition: all 0.15s; background: transparent; }
+.btn-danger { border-color: #fecaca; color: var(--admin-red); }
+.btn-danger:hover { background: var(--admin-red-light); }
+.btn-ok { border-color: #a7f3d0; color: var(--admin-green); }
+.btn-ok:hover { background: var(--admin-green-light); }
+
+/* Tags */
+.tag { display: inline-flex; padding: 2px 10px; border-radius: 3px; font-size: 0.72rem; font-weight: 600; }
+.tag-ok { background: var(--admin-green-light); color: var(--admin-green); }
+.tag-warn { background: var(--admin-amber-light); color: var(--admin-amber); }
+.tag-bad { background: var(--admin-red-light); color: var(--admin-red); }
+.tag-dim { background: #f3f4f6; color: var(--admin-text-secondary); }
+.role-tag { font-size: 0.7rem; color: var(--admin-accent); background: var(--admin-accent-light); padding: 1px 8px; border-radius: 3px; font-weight: 600; }
+
+/* Users */
+.user-section { margin-top: 20px; border-top: 1px solid var(--admin-border); padding-top: 14px; }
+.user-section h4 { margin: 0 0 10px; font-size: 0.8rem; font-weight: 700; color: var(--admin-text-secondary); }
+.user-row { display: flex; align-items: center; justify-content: space-between; padding: 11px 0; border-bottom: 1px solid #f3f4f6; gap: 12px; }
 .user-row:last-child { border-bottom: none; }
-.user-info { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.user-avatar {
-  width: 36px; height: 36px; border-radius: 50%; background: #e6f2f8; color: #0072b2;
-  display: flex; align-items: center; justify-content: center; font-size: 0.85rem; font-weight: 700; flex-shrink: 0;
-}
-.staff-avatar { background: #F3F4F6; color: #6B7280; }
-.user-info strong { font-size: 0.9rem; color: #1a1a2e; display: block; }
-.user-phone { font-size: 0.78rem; color: #9CA3AF; }
+.user-info { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.uav { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.76rem; font-weight: 700; flex-shrink: 0; }
+.owner-av { background: var(--admin-accent-light); color: var(--admin-accent); }
+.staff-av { background: #f3f4f6; color: var(--admin-text-secondary); }
+.user-info strong { display: block; font-size: 0.84rem; color: var(--admin-text); }
+.user-info span { font-size: 0.74rem; color: var(--admin-text-secondary); }
 .user-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.role-tag { font-size: 0.72rem; color: #0072b2; background: #e6f2f8; padding: 1px 8px; border-radius: 4px; font-weight: 600; }
+.minibtn { padding: 3px 10px; border: 1px solid var(--admin-border); border-radius: 4px; background: var(--admin-surface); color: var(--admin-text-secondary); font-size: 0.72rem; cursor: pointer; transition: all 0.15s; }
+.minibtn:hover { border-color: var(--admin-accent); color: var(--admin-accent); }
+.minibtn.del:hover { border-color: var(--admin-red); color: var(--admin-red); }
 
-/* Customer */
-.customer-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #F9FAFB; }
-.customer-row:last-child { border-bottom: none; }
-.cust-name { font-weight: 600; font-size: 0.88rem; color: #111827; }
-.cust-meta { font-size: 0.8rem; color: #9CA3AF; }
+/* Restrict */
+.rlist { display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px; }
+.rchip { display: flex; align-items: flex-start; gap: 12px; padding: 10px 14px; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer; transition: all 0.15s; }
+.rchip:hover { border-color: #d1d5db; background: #fafbfc; }
+.rchip.on { border-color: var(--admin-red); background: var(--admin-red-light); }
+.rchip input { display: none; }
+.rcb { width: 20px; height: 20px; border-radius: 5px; border: 2px solid #d1d5db; flex-shrink: 0; transition: all 0.15s; display: flex; align-items: center; justify-content: center; }
+.rchip.on .rcb { border-color: var(--admin-red); background: var(--admin-red); }
+.rchip.on .rcb::after { content: '✕'; color: #fff; font-size: 11px; font-weight: 700; }
+.rchip strong { display: block; font-size: 0.84rem; color: var(--admin-text); }
+.rchip small { display: block; font-size: 0.74rem; color: var(--admin-text-secondary); margin-top: 2px; }
+.rchip.on strong { color: #991b1b; }
 
-/* Restrict section */
-.restrict-section { border-top: 1px solid #F3F4F6; padding-top: 16px; margin-top: 16px; }
-.restrict-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.restrict-label { font-weight: 600; font-size: 0.9rem; color: #1a1a2e; }
-.restrict-desc { font-size: 0.78rem; color: #9CA3AF; margin: 0 0 14px; line-height: 1.5; }
-.restrict-checks { display: flex; flex-direction: column; gap: 8px; }
-.restrict-item {
-  display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px;
-  border: 1px solid #E8ECF1; border-radius: 10px; cursor: pointer;
-  transition: all 0.2s;
-}
-.restrict-item:hover { border-color: #D1D5DB; background: #FAFBFC; }
-.restrict-item.on { border-color: #DC2626; background: #FEF2F2; }
-.restrict-item input[type="checkbox"] { display: none; }
-.check-box {
-  width: 20px; height: 20px; border-radius: 6px; border: 2px solid #D1D5DB;
-  flex-shrink: 0; margin-top: 2px; transition: all 0.2s;
-  display: flex; align-items: center; justify-content: center;
-}
-.restrict-item.on .check-box { border-color: #DC2626; background: #DC2626; }
-.restrict-item.on .check-box::after { content: '✕'; color: #fff; font-size: 11px; font-weight: 700; }
-.check-text strong { display: block; font-size: 0.88rem; color: #1a1a2e; }
-.check-text small { display: block; font-size: 0.76rem; color: #9CA3AF; margin-top: 2px; }
-.restrict-item.on .check-text strong { color: #991B1B; }
+/* Customers */
+.cust-row { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid #f3f4f6; }
+.cust-row:last-child { border-bottom: none; }
+.cn { font-weight: 600; font-size: 0.84rem; color: var(--admin-text); }
+.cm { font-size: 0.78rem; color: var(--admin-text-secondary); }
+.more { text-align: center; font-size: 0.8rem; color: var(--admin-text-secondary); padding-top: 8px; margin: 0; }
+
+/* Mini table */
+.mini-table-wrap { border-radius: 6px; overflow: hidden; }
+.mini-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.mini-table thead { background: #f9fafb; }
+.mini-table th { padding: 8px 10px; text-align: left; font-size: 0.7rem; font-weight: 700; color: var(--admin-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--admin-border); }
+.mini-table td { padding: 7px 10px; border-bottom: 1px solid #f3f4f6; color: var(--admin-text); }
+.mini-table tr:last-child td { border-bottom: none; }
+.mini-table tbody tr:hover { background: #fafbfc; }
+.mono { font-family: 'SF Mono','Cascadia Code','Consolas',monospace; font-size: 0.74rem; }
+.time { color: var(--admin-text-secondary); }
 
 @media (max-width: 640px) {
-  .store-detail {
-    padding: 16px;
-  }
-
-  .detail-hero {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .user-row,
-  .customer-row {
-    align-items: flex-start;
-    flex-direction: column;
-  }
+  .page { padding: 12px 12px 32px; }
+  .hero-bar { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .user-row { flex-direction: column; align-items: flex-start; }
+  .user-actions { flex-wrap: wrap; }
 }
 </style>

@@ -5,7 +5,7 @@ export const sendCode = (phone: string) =>
   http.post<{ message: string }>('/auth/send-code', { phone })
 
 export const loginByPhone = (phone: string, code: string) =>
-  http.post<TokenResponse | { isNewUser: boolean; phone: string }>('/auth/login/phone', { phone, code })
+  http.post<TokenResponse>('/auth/login/phone', { phone, code })
 
 export const loginByPassword = (phone: string, password: string) =>
   http.post<TokenResponse>('/auth/login/password', { phone, password })

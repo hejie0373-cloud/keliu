@@ -65,6 +65,7 @@ async def admin_overview(
     _admin: User = Depends(_require_super_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    # 核心规模
     stores = (await db.execute(
         select(func.count(Store.id)).where(Store.id != "00000000000000000000000000000001")
     )).scalar() or 0
@@ -75,7 +76,89 @@ async def admin_overview(
     high_risk = (await db.execute(
         select(func.count(AiMetric.id)).where(AiMetric.churn_score > 60)
     )).scalar() or 0
-    return {"total_stores": stores, "total_users": users, "total_customers": customers, "high_risk_customers": high_risk}
+
+    # 活跃店铺（有活跃订阅的店铺数）
+    active_stores = (await db.execute(
+        select(func.count(Subscription.store_id)).where(Subscription.status == "active")
+    )).scalar() or 0
+
+    # 今日新增客户
+    today_start = datetime.combine(date.today(), datetime.min.time())
+    today_new_customers = (await db.execute(
+        select(func.count(Customer.id)).where(
+            Customer.is_deleted == False,  # noqa
+            Customer.created_at >= today_start,
+        )
+    )).scalar() or 0
+
+    # 营收
+    today_revenue = (await db.execute(
+        select(func.coalesce(func.sum(PaymentOrder.amount_cents), 0)).where(
+            PaymentOrder.status == "paid",
+            PaymentOrder.paid_at >= today_start,
+        )
+    )).scalar() or 0
+    month_start = datetime.combine(date.today().replace(day=1), datetime.min.time())
+    month_revenue = (await db.execute(
+        select(func.coalesce(func.sum(PaymentOrder.amount_cents), 0)).where(
+            PaymentOrder.status == "paid",
+            PaymentOrder.paid_at >= month_start,
+        )
+    )).scalar() or 0
+
+    # 订单统计
+    paid_orders = (await db.execute(
+        select(func.count(PaymentOrder.id)).where(PaymentOrder.status == "paid")
+    )).scalar() or 0
+    pending_orders = (await db.execute(
+        select(func.count(PaymentOrder.id)).where(PaymentOrder.status == "pending")
+    )).scalar() or 0
+
+    # 套餐分布
+    plan_rows = (await db.execute(
+        select(Subscription.plan_name, func.count(Subscription.id)).group_by(Subscription.plan_name)
+    )).all()
+
+    # 到店与营销
+    from app.models.customer import Visit
+    from app.models.campaign import Campaign
+    today_visits = (await db.execute(
+        select(func.count(Visit.id)).where(Visit.visited_at >= today_start)
+    )).scalar() or 0
+    total_campaigns = (await db.execute(
+        select(func.count(Campaign.id))
+    )).scalar() or 0
+    active_campaigns = (await db.execute(
+        select(func.count(Campaign.id)).where(Campaign.status == "sent")
+    )).scalar() or 0
+    active_users = (await db.execute(
+        select(func.count(User.id)).where(User.is_active == True)  # noqa
+    )).scalar() or 0
+
+    # 订阅状态分布
+    status_rows = (await db.execute(
+        select(Subscription.status, func.count(Subscription.id)).group_by(Subscription.status)
+    )).all()
+
+    return {
+        "total_stores": stores,
+        "total_users": users,
+        "active_users": active_users,
+        "total_customers": customers,
+        "high_risk_customers": high_risk,
+        "active_stores": active_stores,
+        "today_new_customers": today_new_customers,
+        "today_revenue_cents": int(today_revenue),
+        "month_revenue_cents": int(month_revenue),
+        "paid_orders": int(paid_orders),
+        "pending_orders": int(pending_orders),
+        "failed_orders": 0,
+        "plan_distribution": {name: int(count) for name, count in plan_rows},
+        "subscription_status": {s: int(c) for s, c in status_rows},
+        "today_visits": int(today_visits),
+        "total_campaigns": int(total_campaigns),
+        "active_campaigns": int(active_campaigns),
+    }
 
 
 @router.get("/stores", summary="店铺列表")

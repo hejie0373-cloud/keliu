@@ -2,8 +2,7 @@
 import { onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import http from '@/api/http'
-import { ElMessage } from 'element-plus'
-import { ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const router = useRouter()
 const stores = ref<any[]>([])
@@ -24,36 +23,24 @@ async function loadStores() {
   loading.value = true
   try {
     const { data } = await http.get('/admin/stores', { params: { search: search.value || undefined, page: page.value, page_size: pageSize } })
-    stores.value = (data as any).items || []
-    total.value = (data as any).total || 0
+    stores.value = (data as any).items || []; total.value = (data as any).total || 0
   } finally { loading.value = false }
 }
-
 function openRestrict(row: any) {
-  restrictStoreId.value = row.id
-  restrictStoreName.value = row.name
+  restrictStoreId.value = row.id; restrictStoreName.value = row.name
   restrictStoreActive.value = row?.subscription?.isActive ?? true
   const restr = (row.subscription?.restrictions || '').split(',').filter(Boolean)
-  restrictions.ai = restr.includes('ai')
-  restrictions.campaign = restr.includes('campaign')
-  restrictions.export = restr.includes('export')
+  restrictions.ai = restr.includes('ai'); restrictions.campaign = restr.includes('campaign'); restrictions.export = restr.includes('export')
   restrictVisible.value = true
 }
-
 async function saveRestrictions() {
   restrictionSaving.value = true
   try {
-    const list = []
-    if (restrictions.ai) list.push('ai')
-    if (restrictions.campaign) list.push('campaign')
-    if (restrictions.export) list.push('export')
+    const list = []; if (restrictions.ai) list.push('ai'); if (restrictions.campaign) list.push('campaign'); if (restrictions.export) list.push('export')
     await http.put(`/admin/stores/${restrictStoreId.value}/restrictions`, null, { params: { restrictions: list.join(',') } })
-    restrictVisible.value = false
-    await loadStores()
-    ElMessage.success('限制已保存')
+    restrictVisible.value = false; await loadStores(); ElMessage.success('限制已保存')
   } finally { restrictionSaving.value = false }
 }
-
 async function toggleFullDisable() {
   const sid = restrictStoreId.value
   if (restrictStoreActive.value) {
@@ -64,233 +51,152 @@ async function toggleFullDisable() {
     await http.put(`/admin/stores/${sid}/restrictions`, null, { params: { restrictions: '' } })
     await http.put(`/admin/stores/${sid}/toggle`)
   }
-  restrictStoreActive.value = !restrictStoreActive.value
-  restrictVisible.value = false
-  await loadStores()
+  restrictStoreActive.value = !restrictStoreActive.value; restrictVisible.value = false; await loadStores()
   ElMessage.success(restrictStoreActive.value ? '店铺已启用' : '店铺已完全禁用')
 }
-
-function restrictState(sub: any): 'none' | 'partial' | 'full' {
+function restrictState(sub: any): string {
   if (!sub?.restrictions) return 'none'
   const list = sub.restrictions.split(',').filter(Boolean)
-  if (list.length === 0) return 'none'
-  if (list.length >= 3) return 'full'
-  return 'partial'
+  if (list.length === 0) return 'none'; if (list.length >= 3) return 'full'; return 'partial'
 }
-function restrictLabel(s: string) {
-  return { none: '无禁用', partial: '部分限制', full: '完全禁用' }[s] || s
-}
-function planLabel(sub: any) {
-  if (!sub) return '免费版'
-  return sub.planDisplayName || sub.plan || '免费版'
-}
+function restrictLabel(s: string) { return { none: '无限制', partial: '部分限制', full: '已禁用' }[s] || s }
+function rtag(s: string) { return { none: 'tag-ok', partial: 'tag-warn', full: 'tag-bad' }[s] || 'tag-ok' }
+function planLabel(sub: any) { return sub?.planDisplayName || sub?.plan || '免费版' }
 
 onMounted(() => loadStores())
-watch([page, search], () => { page.value = search.value ? 1 : page.value; loadStores() })
+watch([page, search], () => { if (search.value) page.value = 1; loadStores() })
 </script>
 
 <template>
-  <div class="stores-shell">
-    <header class="stores-hero">
+  <div class="admin-route page">
+    <header class="hero">
       <div>
-        <span class="hero-kicker">平台管理</span>
         <h1>店铺管理</h1>
-        <p>检索商家店铺、查看套餐状态，并对功能权限进行平台侧管控。</p>
+        <p>检索商家店铺、查看套餐状态，并对功能权限进行平台侧管控 · 共 {{ total }} 家</p>
       </div>
     </header>
 
-    <section class="stores-panel">
-      <div class="toolbar">
-        <el-input v-model="search" class="search-input" placeholder="搜索店铺名、店主或手机号" clearable @clear="loadStores" @keyup.enter="loadStores" />
-        <el-button type="primary" @click="loadStores">搜索</el-button>
-        <span class="toolbar-meta">共 {{ total }} 家店铺</span>
-      </div>
+    <div class="search-bar">
+      <input v-model="search" placeholder="搜索店铺名、店主或手机号..." @keyup.enter="loadStores()" />
+      <button class="search-btn" @click="loadStores()">搜索</button>
+    </div>
 
-      <el-table :data="stores" v-loading="loading" stripe>
-        <el-table-column label="店铺" min-width="180">
-          <template #default="{ row }">
-            <div class="store-cell">
-              <strong>{{ row.name }}</strong>
-              <small>{{ row.ownerName || '未填店主' }} · {{ row.ownerPhone || '未填手机号' }}</small>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="套餐" width="100">
-          <template #default="{ row }">
-            <el-tag size="small">{{ planLabel(row.subscription) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="限制状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="restrictState(row.subscription) === 'full' ? 'danger' : restrictState(row.subscription) === 'partial' ? 'warning' : 'success'" size="small">
-              {{ restrictLabel(restrictState(row.subscription)) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="140" fixed="right">
-          <template #default="{ row }">
-            <el-button text type="primary" size="small" @click="router.push(`/admin/stores/${row.id}`)">详情</el-button>
-            <el-button text size="small" @click="openRestrict(row)">管控</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>店铺</th><th>套餐</th><th>限制状态</th><th style="width:140px">操作</th></tr></thead>
+        <tbody>
+          <tr v-for="row in stores" :key="row.id">
+            <td>
+              <strong class="store-name">{{ row.name }}</strong>
+              <span class="store-owner">{{ row.ownerName || '未填店主' }} · {{ row.ownerPhone || '未填手机号' }}</span>
+            </td>
+            <td><span class="plan-badge">{{ planLabel(row.subscription) }}</span></td>
+            <td><span :class="['tag', rtag(restrictState(row.subscription))]">{{ restrictLabel(restrictState(row.subscription)) }}</span></td>
+            <td>
+              <div class="actions">
+                <button class="act-btn" @click="router.push(`/admin/stores/${row.id}`)">详情</button>
+                <button class="act-btn warn" @click="openRestrict(row)">管控</button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div v-if="stores.length === 0 && !loading" class="empty">暂无匹配店铺</div>
+    </div>
 
-      <div class="pagination-row">
-        <el-pagination v-model:current-page="page" :total="total" :page-size="pageSize" background layout="prev,pager,next" />
-      </div>
-    </section>
+    <div class="pager" v-if="total > pageSize">
+      <button :disabled="page <= 1" @click="page--">上一页</button>
+      <span>{{ page }} / {{ Math.ceil(total / pageSize) }}</span>
+      <button :disabled="page >= Math.ceil(total / pageSize)" @click="page++">下一页</button>
+    </div>
 
-    <!-- 管控弹窗 -->
     <el-dialog v-model="restrictVisible" :title="`店铺管控 · ${restrictStoreName}`" width="460px" destroy-on-close>
-      <!-- 功能限制 -->
-      <p style="color:#6B7280;font-size:0.85rem;margin:0 0 14px">选择要限制的功能，勾选后商家端对应操作将被拦截。</p>
-      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px">
-        <label :class="['restrict-item', { on: restrictions.ai }]">
-          <input type="checkbox" v-model="restrictions.ai" />
-          <span class="check-box" />
+      <p style="color:#6B7280;font-size:0.85rem;margin:0 0 16px">选择要限制的功能，勾选后商家端对应操作将被拦截。</p>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:22px">
+        <label :class="['rchip', { on: restrictions.ai }]">
+          <input type="checkbox" v-model="restrictions.ai" /><span class="rcb" />
           <div><strong>AI 评分/文案</strong><small>禁止流失分析和文案生成</small></div>
         </label>
-        <label :class="['restrict-item', { on: restrictions.campaign }]">
-          <input type="checkbox" v-model="restrictions.campaign" />
-          <span class="check-box" />
+        <label :class="['rchip', { on: restrictions.campaign }]">
+          <input type="checkbox" v-model="restrictions.campaign" /><span class="rcb" />
           <div><strong>营销活动</strong><small>禁止创建和发送营销活动</small></div>
         </label>
-        <label :class="['restrict-item', { on: restrictions.export }]">
-          <input type="checkbox" v-model="restrictions.export" />
-          <span class="check-box" />
+        <label :class="['rchip', { on: restrictions.export }]">
+          <input type="checkbox" v-model="restrictions.export" /><span class="rcb" />
           <div><strong>数据导出</strong><small>禁止导出 CSV 文件</small></div>
         </label>
       </div>
       <el-button type="primary" :loading="restrictionSaving" @click="saveRestrictions" style="width:100%">保存限制</el-button>
-
       <el-divider />
-
-      <!-- 完全禁用 -->
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div>
           <strong style="font-size:0.9rem">{{ restrictStoreActive ? '完全禁用店铺' : '重新启用店铺' }}</strong>
           <p style="color:#9CA3AF;font-size:0.8rem;margin:2px 0 0">{{ restrictStoreActive ? '禁用所有人员登录，限制全部功能' : '恢复登录权限，清除所有限制' }}</p>
         </div>
-        <el-button :type="restrictStoreActive ? 'danger' : 'success'" size="small" @click="toggleFullDisable">
-          {{ restrictStoreActive ? '完全禁用' : '启用' }}
-        </el-button>
+        <el-button :type="restrictStoreActive ? 'danger' : 'success'" size="small" @click="toggleFullDisable">{{ restrictStoreActive ? '完全禁用' : '启用' }}</el-button>
       </div>
     </el-dialog>
   </div>
 </template>
 
 <style scoped>
-.stores-shell {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
+.page { padding: 16px 24px 40px; }
+.hero { margin-bottom: 16px; }
+.hero h1 { font-size: 1.35rem; font-weight: 700; color: var(--admin-text); margin: 0; }
+.hero p { color: var(--admin-text-secondary); font-size: 0.85rem; margin: 4px 0 0; }
 
-.stores-hero {
-  padding: 24px 24px 0;
+.search-bar { display: flex; gap: 8px; margin-bottom: 14px; max-width: 500px; }
+.search-bar input {
+  flex: 1; padding: 8px 14px; border: 1px solid var(--admin-border); border-radius: 6px;
+  font-size: 0.86rem; color: var(--admin-text); background: var(--admin-surface); outline: none;
+  transition: border-color 0.15s;
 }
-
-.hero-kicker {
-  color: #0072b2;
-  font-size: 0.78rem;
-  font-weight: 800;
+.search-bar input::placeholder { color: #b0b7c3; }
+.search-bar input:focus { border-color: var(--admin-accent); box-shadow: 0 0 0 3px var(--admin-accent-light); }
+.search-btn {
+  padding: 8px 18px; border: 1px solid var(--admin-accent); border-radius: 6px;
+  background: var(--admin-accent); color: #fff; font-size: 0.84rem; font-weight: 600; cursor: pointer; transition: all 0.15s;
 }
+.search-btn:hover { background: #1557b0; }
 
-.stores-hero h1 {
-  margin: 8px 0 0;
-  color: #111827;
-  font-size: 1.5rem;
-  line-height: 1.2;
-}
+.table-wrap { background: var(--admin-surface); border: 1px solid var(--admin-border); border-radius: 8px; overflow: hidden; }
+table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+thead { background: #f9fafb; }
+th { padding: 10px 14px; text-align: left; font-size: 0.71rem; font-weight: 700; color: var(--admin-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--admin-border); }
+td { padding: 10px 14px; border-bottom: 1px solid #f3f4f6; color: var(--admin-text); }
+tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: #fafbfc; }
+.store-name { display: block; font-size: 0.86rem; font-weight: 600; }
+.store-owner { display: block; font-size: 0.76rem; color: var(--admin-text-secondary); margin-top: 2px; }
+.plan-badge { display: inline-flex; padding: 2px 10px; border-radius: 4px; font-size: 0.74rem; font-weight: 600; background: var(--admin-accent-light); color: var(--admin-accent); }
 
-.stores-hero p {
-  max-width: 660px;
-  margin: 10px 0 0;
-  color: #6b7280;
-}
+.tag { display: inline-flex; padding: 2px 10px; border-radius: 3px; font-size: 0.72rem; font-weight: 600; }
+.tag-ok { background: var(--admin-green-light); color: var(--admin-green); }
+.tag-warn { background: var(--admin-amber-light); color: var(--admin-amber); }
+.tag-bad { background: var(--admin-red-light); color: var(--admin-red); }
 
-.stores-panel {
-  margin: 0 24px 24px;
-  border: 1px solid #e3e8ef;
-  border-radius: 8px;
-  background: #fff;
-  overflow: hidden;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
-}
+.actions { display: flex; gap: 8px; }
+.act-btn { padding: 4px 12px; border: 1px solid var(--admin-border); border-radius: 4px; background: var(--admin-surface); color: var(--admin-text-secondary); font-size: 0.76rem; cursor: pointer; transition: all 0.15s; }
+.act-btn:hover { border-color: var(--admin-accent); color: var(--admin-accent); }
+.act-btn.warn:hover { border-color: var(--admin-amber); color: var(--admin-amber); }
 
-.toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 16px;
-  border-bottom: 1px solid #eef2f7;
-  flex-wrap: wrap;
-}
+.rchip { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer; transition: all 0.15s; }
+.rchip:hover { border-color: #d1d5db; background: #fafbfc; }
+.rchip.on { border-color: var(--admin-red); background: var(--admin-red-light); }
+.rchip input { display: none; }
+.rcb { width: 20px; height: 20px; border-radius: 5px; border: 2px solid #d1d5db; flex-shrink: 0; transition: all 0.15s; display: flex; align-items: center; justify-content: center; }
+.rchip.on .rcb { border-color: var(--admin-red); background: var(--admin-red); }
+.rchip.on .rcb::after { content: '✕'; color: #fff; font-size: 11px; font-weight: 700; }
+.rchip strong { display: block; font-size: 0.86rem; color: var(--admin-text); }
+.rchip small { display: block; font-size: 0.74rem; color: var(--admin-text-secondary); margin-top: 2px; }
+.rchip.on strong { color: #991b1b; }
 
-.search-input {
-  width: min(320px, 100%);
-}
+.empty { padding: 40px; text-align: center; color: var(--admin-text-secondary); }
+.pager { display: flex; align-items: center; justify-content: center; gap: 16px; padding-top: 16px; }
+.pager button { padding: 6px 14px; border: 1px solid var(--admin-border); border-radius: 6px; background: var(--admin-surface); color: var(--admin-text-secondary); font-size: 0.82rem; cursor: pointer; }
+.pager button:hover:not(:disabled) { border-color: var(--admin-accent); color: var(--admin-accent); }
+.pager button:disabled { opacity: 0.4; cursor: default; }
+.pager span { font-size: 0.82rem; color: var(--admin-text-secondary); }
 
-.toolbar-meta {
-  margin-left: auto;
-  color: #9ca3af;
-  font-size: 0.86rem;
-}
-
-.store-cell strong,
-.store-cell small {
-  display: block;
-}
-
-.store-cell strong {
-  color: #111827;
-}
-
-.store-cell small {
-  color: #9ca3af;
-  font-size: 0.8rem;
-}
-
-.pagination-row {
-  display: flex;
-  justify-content: center;
-  padding: 16px;
-  border-top: 1px solid #eef2f7;
-}
-
-.restrict-item {
-  display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px;
-  border: 1px solid #E8ECF1; border-radius: 10px; cursor: pointer;
-  transition: all 0.2s;
-}
-.restrict-item:hover { border-color: #D1D5DB; background: #FAFBFC; }
-.restrict-item.on { border-color: #DC2626; background: #FEF2F2; }
-.restrict-item input { display: none; }
-.check-box {
-  width: 20px; height: 20px; border-radius: 6px; border: 2px solid #D1D5DB;
-  flex-shrink: 0; margin-top: 1px; transition: all 0.2s;
-  display: flex; align-items: center; justify-content: center;
-}
-.restrict-item.on .check-box { border-color: #DC2626; background: #DC2626; }
-.restrict-item.on .check-box::after { content: '✕'; color: #fff; font-size: 11px; font-weight: 700; }
-.restrict-item strong { display: block; font-size: 0.88rem; color: #1a1a2e; }
-.restrict-item small { display: block; font-size: 0.76rem; color: #9CA3AF; margin-top: 2px; }
-.restrict-item.on strong { color: #991B1B; }
-
-@media (max-width: 640px) {
-  .stores-hero {
-    padding-left: 16px;
-    padding-right: 16px;
-  }
-
-  .stores-panel {
-    margin-left: 16px;
-    margin-right: 16px;
-  }
-
-  .toolbar-meta {
-    margin-left: 0;
-    width: 100%;
-  }
-}
+@media (max-width: 640px) { .page { padding: 12px 12px 32px; } .table-wrap { overflow-x: auto; } }
 </style>

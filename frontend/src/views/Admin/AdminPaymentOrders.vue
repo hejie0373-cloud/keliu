@@ -8,306 +8,154 @@ const summary = ref<AdminPaymentSummary | null>(null)
 const loading = ref(false)
 const total = ref(0)
 const page = ref(1)
-const pageSize = ref(20)
+const pageSize = 20
 const status = ref('')
 
 const statusOptions = [
-  { value: '', label: '全部订单' },
+  { value: '', label: '全部' },
   { value: 'pending', label: '待支付' },
   { value: 'paid', label: '已支付' },
-  { value: 'failed', label: '支付失败' },
-  { value: 'cancelled', label: '已取消' },
-  { value: 'expired', label: '已过期' },
+  { value: 'failed', label: '失败' },
+  { value: 'cancelled', label: '取消' },
+  { value: 'expired', label: '过期' },
 ]
-
-const planLabels: Record<string, string> = {
-  basic: '基础版',
-  professional: '专业版',
-  enterprise: '旗舰版',
+const planLabels: Record<string, string> = { basic: '基础版', professional: '专业版', enterprise: '旗舰版' }
+const statusLabels: Record<string, string> = { pending: '待支付', paid: '已支付', failed: '失败', cancelled: '取消', expired: '过期' }
+function money(c: number) { return `¥${(c / 100).toFixed(2)}` }
+function stag(v: string) {
+  if (v === 'paid') return 'tag-ok'
+  if (v === 'pending') return 'tag-warn'
+  if (v === 'failed' || v === 'cancelled') return 'tag-bad'
+  return 'tag-dim'
 }
-
-const statusLabels: Record<string, string> = {
-  pending: '待支付',
-  paid: '已支付',
-  failed: '支付失败',
-  cancelled: '已取消',
-  expired: '已过期',
-}
-
-function money(cents: number) {
-  return `¥${(cents / 100).toFixed(2)}`
-}
-
-function formatDistribution(counts?: Record<string, number>) {
-  if (!counts || Object.keys(counts).length === 0) return '-'
-  return Object.entries(counts)
-    .map(([key, count]) => `${planLabels[key] || statusLabels[key] || key} ${count}`)
-    .join(' / ')
-}
-
-function statusType(value: string) {
-  if (value === 'paid') return 'success'
-  if (value === 'pending') return 'warning'
-  if (value === 'failed') return 'danger'
-  return 'info'
-}
-
 function formatTime(value: string | null) {
-  return value ? value.replace('T', ' ').slice(0, 19) : '-'
+  if (!value) return '-'
+  const d = new Date(value + 'Z')
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
+function formatDist(counts?: Record<string, number>) {
+  if (!counts || Object.keys(counts).length === 0) return '-'
+  return Object.entries(counts).map(([k, c]) => `${planLabels[k] || k} ${c}`).join(' · ')
 }
 
-async function loadSummary() {
-  const { data } = await billingApi.getAdminPaymentSummary()
-  summary.value = data
-}
-
+async function loadSummary() { const { data } = await billingApi.getAdminPaymentSummary(); summary.value = data }
 async function loadOrders() {
   loading.value = true
   try {
-    const { data } = await billingApi.listAdminOrders({
-      page: page.value,
-      pageSize: pageSize.value,
-      status: status.value || undefined,
-    })
-    orders.value = data.items
-    total.value = data.total
-  } finally {
-    loading.value = false
-  }
+    const { data } = await billingApi.listAdminOrders({ page: page.value, pageSize, status: status.value || undefined })
+    orders.value = data.items; total.value = data.total
+  } finally { loading.value = false }
 }
+function onStatusChange() { page.value = 1; loadOrders() }
+function onPage(n: number) { page.value = n; loadOrders() }
 
-function handleStatusChange() {
-  page.value = 1
-  void loadOrders()
-}
-
-function handlePageChange(nextPage: number) {
-  page.value = nextPage
-  void loadOrders()
-}
-
-onMounted(() => {
-  void loadSummary()
-  void loadOrders()
-})
+onMounted(async () => { await Promise.all([loadSummary(), loadOrders()]) })
 </script>
 
 <template>
-  <div class="admin-payment-page">
-    <div class="page-head">
+  <div class="admin-route page">
+    <header class="hero">
       <div>
-        <span class="hero-kicker">平台管理</span>
-        <h1 class="page-title">支付订单</h1>
-        <p class="page-subtitle">查看平台收入、订单状态和商家支付记录</p>
+        <h1>支付订单</h1>
+        <p>查看平台收入、订单状态和商家支付记录 · 共 {{ total }} 条</p>
       </div>
-      <el-button @click="loadOrders">刷新订单</el-button>
+      <button class="refresh-btn" @click="loadOrders">刷新</button>
+    </header>
+
+    <div class="summary-strip">
+      <div class="sum-item"><span class="sum-label">今日收入</span><strong class="sum-val">{{ money(summary?.todayRevenueCents || 0) }}</strong></div>
+      <div class="sum-div" />
+      <div class="sum-item"><span class="sum-label">本月收入</span><strong class="sum-val">{{ money(summary?.monthRevenueCents || 0) }}</strong></div>
+      <div class="sum-div" />
+      <div class="sum-item"><span class="sum-label">已支付</span><strong class="sum-val green">{{ summary?.paidOrders || 0 }}</strong></div>
+      <div class="sum-div" />
+      <div class="sum-item"><span class="sum-label">待支付</span><strong class="sum-val amber">{{ summary?.pendingOrders || 0 }}</strong></div>
+      <div class="sum-div" />
+      <div class="sum-item sum-wide"><span class="sum-label">套餐分布</span><span class="sum-dist">{{ formatDist(summary?.planCounts) }}</span></div>
     </div>
 
-    <section class="summary-grid">
-      <div class="metric-card">
-        <div class="metric-label">今日收入</div>
-        <div class="metric-value">{{ money(summary?.todayRevenueCents || 0) }}</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">本月收入</div>
-        <div class="metric-value">{{ money(summary?.monthRevenueCents || 0) }}</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">已支付订单</div>
-        <div class="metric-value">{{ summary?.paidOrders || 0 }}</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">待支付订单</div>
-        <div class="metric-value">{{ summary?.pendingOrders || 0 }}</div>
-      </div>
-      <div class="metric-card metric-card--wide">
-        <div class="metric-label">套餐分布</div>
-        <div class="metric-value metric-value--small">{{ formatDistribution(summary?.planCounts) }}</div>
-      </div>
-      <div class="metric-card metric-card--wide">
-        <div class="metric-label">订阅状态</div>
-        <div class="metric-value metric-value--small">{{ formatDistribution(summary?.statusCounts) }}</div>
-      </div>
-    </section>
-
-    <section class="toolbar">
-      <el-select v-model="status" style="width:180px" @change="handleStatusChange">
-        <el-option
-          v-for="item in statusOptions"
-          :key="item.value"
-          :label="item.label"
-          :value="item.value"
-        />
-      </el-select>
-      <div class="toolbar-meta">共 {{ total }} 条订单</div>
-    </section>
-
-    <div class="card table-card">
-      <el-table :data="orders" v-loading="loading" stripe>
-        <el-table-column prop="id" label="订单号" min-width="220" />
-        <el-table-column label="店铺" min-width="160">
-          <template #default="{ row }">{{ row.storeName || row.storeId }}</template>
-        </el-table-column>
-        <el-table-column label="套餐" width="110">
-          <template #default="{ row }">{{ planLabels[row.planName] || row.planName }}</template>
-        </el-table-column>
-        <el-table-column label="金额" width="120">
-          <template #default="{ row }">{{ money(row.amountCents) }}</template>
-        </el-table-column>
-        <el-table-column label="渠道" width="110">
-          <template #default="{ row }">{{ row.provider === 'mock' ? '模拟支付' : row.provider }}</template>
-        </el-table-column>
-        <el-table-column label="状态" width="110">
-          <template #default="{ row }">
-            <el-tag :type="statusType(row.status)" size="small">
-              {{ statusLabels[row.status] || row.status }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="支付时间" min-width="170">
-          <template #default="{ row }">{{ formatTime(row.paidAt) }}</template>
-        </el-table-column>
-        <el-table-column label="创建时间" min-width="170">
-          <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
-        </el-table-column>
-      </el-table>
+    <div class="filter-bar">
+      <button v-for="o in statusOptions" :key="o.value" :class="['chip', { active: status === o.value }]" @click="status = o.value; onStatusChange()">{{ o.label }}</button>
     </div>
 
-    <div class="pagination-row">
-      <el-pagination
-        layout="prev, pager, next"
-        :total="total"
-        :page-size="pageSize"
-        :current-page="page"
-        @current-change="handlePageChange"
-      />
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>订单号</th><th>店铺</th><th>套餐</th><th>金额</th><th>渠道</th><th>状态</th><th>支付时间</th><th>创建时间</th></tr></thead>
+        <tbody>
+          <tr v-for="row in orders" :key="row.id">
+            <td class="mono">{{ row.id.slice(0, 12) }}...</td>
+            <td>{{ row.storeName || row.storeId.slice(0, 10) + '...' }}</td>
+            <td>{{ planLabels[row.planName] || row.planName }}</td>
+            <td class="mono">{{ money(row.amountCents) }}</td>
+            <td>{{ row.provider === 'mock' ? '模拟' : row.provider === 'alipay' ? '支付宝' : row.provider }}</td>
+            <td><span :class="['tag', stag(row.status)]">{{ statusLabels[row.status] || row.status }}</span></td>
+            <td class="mono time">{{ formatTime(row.paidAt) }}</td>
+            <td class="mono time">{{ formatTime(row.createdAt) }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div v-if="orders.length === 0 && !loading" class="empty">暂无订单记录</div>
+    </div>
+
+    <div class="pager" v-if="total > pageSize">
+      <button :disabled="page <= 1" @click="onPage(page - 1)">上一页</button>
+      <span>{{ page }} / {{ Math.ceil(total / pageSize) }}</span>
+      <button :disabled="page >= Math.ceil(total / pageSize)" @click="onPage(page + 1)">下一页</button>
     </div>
   </div>
 </template>
 
 <style scoped>
-.admin-payment-page {
-  padding: 24px;
-}
+.page { padding: 16px 24px 40px; }
+.hero { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+.hero h1 { font-size: 1.35rem; font-weight: 700; color: var(--admin-text); margin: 0; }
+.hero p { color: var(--admin-text-secondary); font-size: 0.85rem; margin: 4px 0 0; }
+.refresh-btn { padding: 6px 16px; border: 1px solid var(--admin-border); border-radius: 6px; background: var(--admin-surface); color: var(--admin-text-secondary); font-size: 0.82rem; cursor: pointer; transition: all 0.15s; }
+.refresh-btn:hover { border-color: var(--admin-accent); color: var(--admin-accent); }
 
-.page-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  margin-bottom: 18px;
-}
+.summary-strip { display: flex; align-items: center; gap: 0; padding: 14px 18px; margin-bottom: 14px; background: var(--admin-surface); border: 1px solid var(--admin-border); border-radius: 8px; }
+.sum-item { padding: 0 18px; }
+.sum-div { width: 1px; height: 28px; background: var(--admin-border); }
+.sum-label { display: block; font-size: 0.68rem; font-weight: 700; color: var(--admin-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
+.sum-val { font-size: 1.1rem; font-weight: 800; color: var(--admin-text); }
+.sum-val.green { color: var(--admin-green); }
+.sum-val.amber { color: var(--admin-amber); }
+.sum-wide { flex: 1; }
+.sum-dist { font-size: 0.82rem; color: var(--admin-text); }
 
-.hero-kicker {
-  color: #0072b2;
-  font-size: 0.78rem;
-  font-weight: 800;
-}
+.filter-bar { display: flex; gap: 6px; margin-bottom: 14px; }
+.chip { padding: 5px 14px; border: 1px solid var(--admin-border); border-radius: 4px; background: var(--admin-surface); color: var(--admin-text-secondary); font-size: 0.78rem; cursor: pointer; transition: all 0.15s; }
+.chip:hover { border-color: #c4c9d2; }
+.chip.active { border-color: var(--admin-accent); background: var(--admin-accent-light); color: var(--admin-accent); font-weight: 600; }
 
-.page-title {
-  margin: 8px 0 0;
-  color: #111827;
-  font-size: 1.5rem;
-  line-height: 1.2;
-}
+.table-wrap { background: var(--admin-surface); border: 1px solid var(--admin-border); border-radius: 8px; overflow: hidden; }
+table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+thead { background: #f9fafb; }
+th { padding: 10px 14px; text-align: left; font-size: 0.71rem; font-weight: 700; color: var(--admin-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--admin-border); }
+td { padding: 10px 14px; border-bottom: 1px solid #f3f4f6; color: var(--admin-text); }
+tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: #fafbfc; }
+.mono { font-family: 'SF Mono','Cascadia Code','Consolas',monospace; font-size: 0.78rem; }
+.time { color: var(--admin-text-secondary); }
 
-.page-subtitle {
-  margin-top: 8px;
-  color: #6b7280;
-}
+.tag { display: inline-flex; padding: 2px 10px; border-radius: 3px; font-size: 0.72rem; font-weight: 600; }
+.tag-ok { background: var(--admin-green-light); color: var(--admin-green); }
+.tag-warn { background: var(--admin-amber-light); color: var(--admin-amber); }
+.tag-bad { background: var(--admin-red-light); color: var(--admin-red); }
+.tag-dim { background: #f3f4f6; color: var(--admin-text-secondary); }
 
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 18px;
-}
+.empty { padding: 40px; text-align: center; color: var(--admin-text-secondary); }
+.pager { display: flex; align-items: center; justify-content: center; gap: 16px; padding-top: 16px; }
+.pager button { padding: 6px 14px; border: 1px solid var(--admin-border); border-radius: 6px; background: var(--admin-surface); color: var(--admin-text-secondary); font-size: 0.82rem; cursor: pointer; }
+.pager button:hover:not(:disabled) { border-color: var(--admin-accent); color: var(--admin-accent); }
+.pager button:disabled { opacity: 0.4; cursor: default; }
+.pager span { font-size: 0.82rem; color: var(--admin-text-secondary); }
 
-.metric-card {
-  background: #fff;
-  border: 1px solid #e3e8ef;
-  border-top: 3px solid #0072b2;
-  border-radius: 8px;
-  padding: 16px;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
-}
-
-.metric-label {
-  color: #6b7280;
-  font-size: 0.85rem;
-  margin-bottom: 8px;
-}
-
-.metric-value {
-  color: #111827;
-  font-size: 1.35rem;
-  font-weight: 700;
-}
-
-.metric-card--wide {
-  grid-column: span 2;
-}
-
-.metric-value--small {
-  font-size: 0.98rem;
-  line-height: 1.5;
-}
-
-.toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
-  padding: 16px;
-  border: 1px solid #e3e8ef;
-  border-radius: 8px;
-  background: #fff;
-}
-
-.toolbar-meta {
-  color: #9ca3af;
-  font-size: 0.9rem;
-}
-
-.table-card {
-  padding: 0;
-  overflow: hidden;
-  border: 1px solid #e3e8ef;
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
-}
-
-.pagination-row {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
-}
-
-@media (max-width: 900px) {
-  .summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .page-head,
-  .toolbar {
-    align-items: stretch;
-    flex-direction: column;
-  }
-}
-
-@media (max-width: 640px) {
-  .admin-payment-page {
-    padding: 16px;
-  }
-
-  .summary-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .metric-card--wide {
-    grid-column: span 1;
-  }
+@media (max-width: 800px) {
+  .page { padding: 12px 12px 32px; }
+  .summary-strip { flex-wrap: wrap; gap: 8px; }
+  .sum-div { display: none; }
+  .table-wrap { overflow-x: auto; }
 }
 </style>

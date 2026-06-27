@@ -26,6 +26,9 @@ dist/
 # IDE
 .idea/
 .vscode/
+.codex/
+.codex_tmp/
+.kiro/
 *.swp
 *.swo
 *~
@@ -43,6 +46,12 @@ es_data/
 logs/
 backend/tmp/
 backend/celerybeat-schedule
+
+# Local tunnel clients and credentials
+tools/natapp/
+natapp.exe
+natapp.yml
+natapp.yaml
 
 # Coverage
 htmlcov/
