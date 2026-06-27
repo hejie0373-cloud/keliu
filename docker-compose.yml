@@ -163,8 +163,6 @@ services:
     restart: unless-stopped
     networks:
       - keliu-net
-    profiles:
-      - deploy
 
 # ============================================================
 # 数据卷

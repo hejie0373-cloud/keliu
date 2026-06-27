@@ -71,5 +71,4 @@ services:
     restart: always
 
   nginx:
-    profiles: []
     restart: always
