@@ -2,6 +2,7 @@
 import json
 import logging
 import secrets
+from datetime import datetime
 from urllib.parse import urlencode
 
 import httpx
@@ -11,7 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.security import create_access_token, create_refresh_token, verify_password
-from app.models.user import Role, User, UserRole
+from app.models.user import Role, User, UserIdentity, UserRole
+from app.services.auth_service import normalize_identity
+from app.services.qr_auth_service import create_login_ticket
 from app.utils.redis_client import get_redis
 
 logger = logging.getLogger(__name__)
@@ -103,10 +106,11 @@ async def handle_callback(code: str, state: str, db: AsyncSession) -> bool:
         return True
 
     tokens = await _create_tokens_for_user(user, db)
+    login_ticket = await create_login_ticket(tokens)
     await r.setex(
         _state_key(state),
         30,
-        json.dumps({"status": "confirmed", "tokens": tokens}, ensure_ascii=False),
+        json.dumps({"status": "confirmed", "login_ticket": login_ticket}, ensure_ascii=False),
     )
     return True
 
@@ -120,8 +124,8 @@ async def get_login_status(state: str) -> dict:
     return json.loads(data_raw)
 
 
-async def bind_wechat_by_password(state: str, phone: str, password: str, db: AsyncSession) -> dict:
-    """Bind a scanned WeChat identity to an existing phone/password account."""
+async def bind_wechat_by_password(state: str, account: str, password: str, db: AsyncSession) -> dict:
+    """Bind a scanned WeChat identity to an existing account."""
     r = await get_redis()
     data_raw = await r.get(_state_key(state))
     if not data_raw:
@@ -131,8 +135,19 @@ async def bind_wechat_by_password(state: str, phone: str, password: str, db: Asy
     if state_data.get("status") != "unbound" or not state_data.get("openid"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="WECHAT_STATE_NOT_BINDABLE")
 
-    result = await db.execute(select(User).where(User.phone == phone))
-    user = result.scalar_one_or_none()
+    identity_type, identifier = normalize_identity(account)
+    identity_result = await db.execute(
+        select(UserIdentity).where(
+            UserIdentity.type == identity_type,
+            UserIdentity.identifier == identifier,
+        )
+    )
+    identity = identity_result.scalar_one_or_none()
+    user = identity.user if identity and identity.verified_at else None
+    if not user:
+        fallback_column = User.phone if identity_type == "phone" else User.email
+        result = await db.execute(select(User).where(fallback_column == identifier))
+        user = result.scalar_one_or_none()
     if not user or not user.password_hash or not verify_password(password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="手机号或密码错误")
     if not user.is_active:
@@ -141,29 +156,31 @@ async def bind_wechat_by_password(state: str, phone: str, password: str, db: Asy
     await _bind_wechat_to_user(user, state_data["openid"], state_data.get("user_data") or {}, db)
 
     tokens = await _create_tokens_for_user(user, db)
+    login_ticket = await create_login_ticket(tokens)
     await r.setex(
         _state_key(state),
         30,
-        json.dumps({"status": "confirmed", "tokens": tokens}, ensure_ascii=False),
+        json.dumps({"status": "confirmed", "login_ticket": login_ticket}, ensure_ascii=False),
     )
-    return {"status": "confirmed", "tokens": tokens}
+    return {"status": "confirmed", "login_ticket": login_ticket}
 
 
 async def _find_existing_wechat_user(openid: str, user_data: dict, db: AsyncSession) -> User | None:
     """Find an existing account for WeChat login; never create a merchant account here."""
-    phone = _extract_phone(user_data) or settings.WECHAT_ADMIN_PHONE.strip()
-    if phone:
-        result = await db.execute(select(User).where(User.phone == phone))
-        user = result.scalar_one_or_none()
-        if user:
-            if not user.is_active:
-                logger.warning("WeChat matched a disabled phone account: phone=%s", phone)
-                return None
-            await _bind_wechat_to_user(user, openid, user_data, db)
-            logger.info("WeChat login matched existing phone account: phone=%s user_id=%s", phone, user.id)
-            return user
-        logger.warning("WeChat login did not find configured phone account: phone=%s openid=%s", phone, openid)
-        return None
+    identity_result = await db.execute(
+        select(UserIdentity).where(
+            UserIdentity.type == "wechat",
+            UserIdentity.identifier == openid,
+        )
+    )
+    identity = identity_result.scalar_one_or_none()
+    if identity and identity.verified_at:
+        user = identity.user
+        if not user.is_active:
+            logger.warning("WeChat identity matched a disabled account: user_id=%s", user.id)
+            return None
+        await _bind_wechat_to_user(user, openid, user_data, db)
+        return user
 
     result = await db.execute(select(User).where(User.wechat_openid == openid))
     user = result.scalar_one_or_none()
@@ -195,6 +212,26 @@ async def _bind_wechat_to_user(user: User, openid: str, user_data: dict, db: Asy
     if existing_user and existing_user.id != user.id:
         existing_user.wechat_openid = None
         await db.flush()
+
+    identity_result = await db.execute(
+        select(UserIdentity).where(
+            UserIdentity.type == "wechat",
+            UserIdentity.identifier == openid,
+        )
+    )
+    identity = identity_result.scalar_one_or_none()
+    if identity and identity.user_id != user.id:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="WECHAT_ALREADY_BOUND")
+    if not identity:
+        db.add(UserIdentity(
+            user_id=user.id,
+            type="wechat",
+            identifier=openid,
+            verified_at=datetime.utcnow(),
+            is_primary=False,
+        ))
+    else:
+        identity.verified_at = identity.verified_at or datetime.utcnow()
 
     nickname = user_data.get("nickname") or user.wechat_nickname or "微信用户"
     avatar = user_data.get("headimgurl") or user.wechat_avatar

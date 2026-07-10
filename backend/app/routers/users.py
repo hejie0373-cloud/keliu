@@ -13,7 +13,7 @@ from app.schemas.auth import (
     UpdateProfileRequest, ChangePasswordRequest, ChangePhoneRequest,
 )
 from app.services.auth_service import get_user_info
-from app.utils.redis_client import verify_sms_code, delete_sms_code
+from app.utils.redis_client import verify_otp_code, delete_otp_code
 
 router = APIRouter()
 
@@ -80,7 +80,7 @@ async def change_phone(
 ):
     """更换绑定手机号（需短信验证码）"""
     # 校验验证码
-    if not await verify_sms_code(data.phone, data.code):
+    if not await verify_otp_code("change_phone", "phone", data.phone, data.code):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="验证码错误或已过期")
     # 检查新手机号是否已被其他用户使用
     from sqlalchemy import select
@@ -91,7 +91,7 @@ async def change_phone(
     # 更新手机号
     current_user.phone = data.phone
     await db.commit()
-    await delete_sms_code(data.phone)
+    await delete_otp_code("change_phone", "phone", data.phone)
     return MessageResponse(message="手机号已更换")
 
 

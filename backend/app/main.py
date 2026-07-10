@@ -95,8 +95,9 @@ async def health_check():
 # WebSocket
 from app.websocket.handler import handle_connection  # noqa: E402
 
+
 @app.websocket("/ws/{store_id}")
-async def websocket_endpoint(websocket, store_id: str, token: str = Query(...)):
+async def websocket_endpoint(websocket: WebSocket, store_id: str, token: str = Query(...)):
     """WebSocket 实时通知端点 — URL: ws://host:8000/ws/{store_id}?token={access_token}"""
     await handle_connection(websocket, store_id, token)
 
@@ -120,6 +121,7 @@ app.include_router(users_router, prefix="/users", tags=["用户"])
 app.include_router(stores_router, prefix="/stores", tags=["店铺"])
 app.include_router(customers_router, prefix="/customers", tags=["客户"])
 app.include_router(metrics_router, prefix="/metrics", tags=["AI 评分"])
+app.include_router(metrics_router, prefix="/api/metrics", tags=["AI 评分"])
 app.include_router(campaigns_router, prefix="/campaigns", tags=["营销"])
 app.include_router(analytics_router, prefix="/analytics", tags=["报表"])
 app.include_router(billing_router, prefix="/billing", tags=["计费"])

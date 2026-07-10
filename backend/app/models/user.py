@@ -47,6 +47,7 @@ class User(Base):
     id = Column(CHAR(32), primary_key=True, default=generate_uuid)
     name = Column(String(100), nullable=True, comment="用户姓名")
     phone = Column(String(20), unique=True, nullable=True, comment="手机号")
+    email = Column(String(255), unique=True, nullable=True, comment="邮箱")
     password_hash = Column(String(255), nullable=True, comment="bcrypt 密码哈希")
     avatar_url = Column(String(500), nullable=True, comment="头像 URL")
     wechat_openid = Column(String(64), unique=True, nullable=True, comment="微信 openid")
@@ -59,10 +60,30 @@ class User(Base):
 
     # 关联
     roles = relationship("UserRole", back_populates="user", cascade="all, delete-orphan")
+    identities = relationship("UserIdentity", back_populates="user", cascade="all, delete-orphan")
     owned_stores = relationship("Store", back_populates="owner", foreign_keys="Store.owner_id")
 
     def __repr__(self):
         return f"<User(id={self.id}, phone={self.phone})>"
+
+
+class UserIdentity(Base):
+    """Verified login identity such as phone, email, or WeChat openid."""
+    __tablename__ = "user_identities"
+    __table_args__ = (
+        UniqueConstraint("type", "identifier", name="uq_user_identity_type_identifier"),
+    )
+
+    id = Column(CHAR(32), primary_key=True, default=generate_uuid)
+    user_id = Column(CHAR(32), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    type = Column(String(20), nullable=False, comment="phone/email/wechat")
+    identifier = Column(String(255), nullable=False, comment="normalized identity value")
+    verified_at = Column(DateTime, nullable=True)
+    is_primary = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    user = relationship("User", back_populates="identities")
 
 
 class UserRole(Base):

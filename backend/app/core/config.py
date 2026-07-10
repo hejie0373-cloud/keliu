@@ -49,6 +49,7 @@ class Settings(BaseSettings):
 
     # 开发便利开关。生产使用 Alembic，不建议自动建表。
     AUTO_CREATE_TABLES: bool = False
+    IMPORT_UPLOAD_DIR: str = ""
 
     # CORS
     CORS_ORIGINS: List[str] = [
@@ -66,9 +67,9 @@ class Settings(BaseSettings):
 
     # 微信测试号扫码登录
     WECHAT_APP_ID: str = ""
+    WECHAT_TOKEN: str = "keliu2025"
     WECHAT_APP_SECRET: str = ""
     WECHAT_REDIRECT_URI: str = ""
-    WECHAT_ADMIN_PHONE: str = "18626834206"
 
     # 支付宝沙箱支付
     ALIPAY_APP_ID: str = ""

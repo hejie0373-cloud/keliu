@@ -22,10 +22,31 @@ QR_STATUS_PENDING = "pending"
 QR_STATUS_SCANNED = "scanned"
 QR_STATUS_CONFIRMED = "confirmed"
 QR_STATUS_EXPIRED = "expired"
+LOGIN_TICKET_TTL = 60
 
 
 def _qr_key(qr_id: str) -> str:
     return f"qr_login:{qr_id}"
+
+
+def _ticket_key(ticket: str) -> str:
+    return f"login_ticket:{ticket}"
+
+
+async def create_login_ticket(tokens: dict) -> str:
+    ticket = secrets.token_urlsafe(32)
+    r = await get_redis()
+    await r.setex(_ticket_key(ticket), LOGIN_TICKET_TTL, json.dumps(tokens, ensure_ascii=False))
+    return ticket
+
+
+async def consume_login_ticket(ticket: str) -> dict | None:
+    r = await get_redis()
+    data_raw = await r.get(_ticket_key(ticket))
+    if not data_raw:
+        return None
+    await r.delete(_ticket_key(ticket))
+    return json.loads(data_raw)
 
 
 async def generate_qr_session() -> dict:
@@ -105,9 +126,11 @@ async def confirm_qr_login(
         "expires_in": expires_in,
     }
 
+    login_ticket = await create_login_ticket(tokens)
+
     data["status"] = QR_STATUS_CONFIRMED
-    data["tokens"] = tokens
+    data["login_ticket"] = login_ticket
     data["user_name"] = user_name
     await r.setex(_qr_key(qr_id), 30, json.dumps(data, ensure_ascii=False))
 
-    return {"success": True, "tokens": tokens}
+    return {"success": True, "login_ticket": login_ticket}
