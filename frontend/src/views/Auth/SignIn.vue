@@ -1,62 +1,113 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import QRCode from 'qrcode'
-import { bindWechatByPassword, getWechatQrUrl, getWechatStatus } from '@/api/auth'
+import AuthModeTabs from '@/components/auth/AuthModeTabs.vue'
+import AuthShell from '@/components/auth/AuthShell.vue'
+import AuthTextInput from '@/components/auth/AuthTextInput.vue'
+import { pulsePanel, revealAuthSurface } from '@/components/auth/authMotion'
+import { bindWechatByPassword, exchangeLoginTicket, getWechatQrUrl, getWechatStatus } from '@/api/auth'
+import { getApiErrorMessage } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const auth = useAuthStore()
 
-const mode = ref<'code' | 'password'>('code')
+const pageRoot = ref<HTMLElement | null>(null)
+const formPanel = ref<HTMLElement | null>(null)
+const bindPanel = ref<HTMLElement | null>(null)
+
+const mode = ref<'email' | 'code' | 'wechat'>('email')
 const loading = ref(false)
 const countdown = ref(0)
-const phone = ref('')
+const email = ref('')
+const emailPassword = ref('')
+const phoneAccount = ref('')
 const code = ref('')
-const password = ref('')
-const showPwd = ref(false)
+const bindAccount = ref('')
+const bindPassword = ref('')
+const agreedToTerms = ref(false)
+const showEmailPassword = ref(false)
+const showBindPassword = ref(false)
 
 const qrSrc = ref('')
-const qrTip = ref('微信扫码登录')
+const qrTip = ref('使用微信扫描二维码')
 const qrExpired = ref(false)
 const wechatBinding = ref(false)
 const bindLoading = ref(false)
+const pendingWechatLoginTicket = ref('')
 let qrState = ''
 let countdownTimer: number | null = null
 let pollTimer: number | null = null
 let expireTimer: number | null = null
 let refreshTimer: number | null = null
+let cleanupReveal: (() => void) | null = null
 
-function validPhone() {
-  return /^1[3-9]\d{9}$/.test(phone.value)
+const loginModes = computed(() => [
+  { label: '邮箱登录', value: 'email' },
+  { label: '手机登录', value: 'code' },
+  { label: '微信扫码', value: 'wechat' },
+])
+
+function validEmail(value = email.value) {
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value.trim().toLowerCase())
+}
+
+function validPhone(value = phoneAccount.value) {
+  return /^1[3-9]\d{9}$/.test(value.trim())
+}
+
+function validBindAccount() {
+  const value = bindAccount.value.trim()
+  return /^1[3-9]\d{9}$/.test(value) || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)
+}
+
+function ensureAgreement() {
+  if (agreedToTerms.value) return true
+  ElMessage.warning('请先阅读并勾选用户协议和隐私政策')
+  return false
+}
+
+function errorDetail(error: unknown) {
+  return (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+}
+
+function startCodeCountdown(seconds = 60) {
+  countdown.value = seconds
+  if (countdownTimer) clearInterval(countdownTimer)
+  countdownTimer = window.setInterval(() => {
+    countdown.value -= 1
+    if (countdown.value <= 0 && countdownTimer) clearInterval(countdownTimer)
+  }, 1000)
 }
 
 async function genQR() {
   qrExpired.value = false
-  qrTip.value = '加载中...'
+  pendingWechatLoginTicket.value = ''
+  qrTip.value = '二维码加载中'
   if (refreshTimer) clearInterval(refreshTimer)
   if (expireTimer) clearTimeout(expireTimer)
 
   try {
     const { data } = await getWechatQrUrl()
     qrState = data.state
-    qrSrc.value = await QRCode.toDataURL(data.qrUrl, { width: 160, margin: 1 })
-    qrTip.value = '微信扫码登录'
+    qrSrc.value = await QRCode.toDataURL(data.qrUrl, { width: 180, margin: 1 })
+    qrTip.value = '使用微信扫描二维码'
     startPolling()
 
     refreshTimer = window.setInterval(async () => {
-      if (!qrExpired.value) await genQR()
+      if (!pendingWechatLoginTicket.value && !qrExpired.value && mode.value === 'wechat') await genQR()
     }, 120 * 1000)
 
     expireTimer = window.setTimeout(() => {
       qrExpired.value = true
-      qrTip.value = '二维码已过期，点击刷新'
+      qrTip.value = '二维码已过期'
       stopPolling()
       if (refreshTimer) clearInterval(refreshTimer)
     }, Math.max(30, data.expiresIn - 5) * 1000)
   } catch {
-    qrTip.value = '加载失败，点击刷新'
+    qrTip.value = '二维码加载失败'
     qrExpired.value = true
   }
 }
@@ -64,28 +115,26 @@ async function genQR() {
 function startPolling() {
   stopPolling()
   pollTimer = window.setInterval(async () => {
-    if (!qrState || qrExpired.value) return
+    if (!qrState || qrExpired.value || mode.value !== 'wechat') return
     try {
       const { data } = await getWechatStatus(qrState)
-      if (data.status === 'confirmed' && data.tokens) {
+      if (data.status === 'confirmed' && data.loginTicket) {
         stopPolling()
-        qrTip.value = '登录成功'
-        auth.setTokens(data.tokens.accessToken, data.tokens.refreshToken)
-        await auth.fetchMe()
-        onLoginSuccess()
+        if (expireTimer) clearTimeout(expireTimer)
+        await completeWechatLogin(data.loginTicket)
       } else if (data.status === 'expired') {
         qrExpired.value = true
         qrTip.value = '二维码已过期'
         stopPolling()
       } else if (data.status === 'unbound') {
         wechatBinding.value = true
-        qrTip.value = '首次微信登录，请绑定已有手机号'
+        qrTip.value = '首次微信登录，请绑定已有账号'
         stopPolling()
       } else {
-        qrTip.value = '请使用微信扫码授权登录'
+        qrTip.value = '请在微信中确认授权'
       }
     } catch {
-      // 轮询失败时保持二维码可见，下一次继续尝试。
+      // Keep polling; transient network errors should not hide the QR code.
     }
   }, 2000)
 }
@@ -99,30 +148,45 @@ function stopPolling() {
 
 function refreshQR() {
   wechatBinding.value = false
+  pendingWechatLoginTicket.value = ''
   void genQR()
 }
 
-async function handleWechatBind() {
-  if (!qrState) return
-  if (!validPhone()) {
-    ElMessage.warning('请输入正确的手机号')
+async function completeWechatLogin(loginTicket: string) {
+  if (!agreedToTerms.value) {
+    pendingWechatLoginTicket.value = loginTicket
+    qrTip.value = '请先勾选协议后继续登录'
+    ensureAgreement()
     return
   }
-  if (!password.value) {
-    ElMessage.warning('请输入该手机号的登录密码')
+
+  pendingWechatLoginTicket.value = ''
+  qrTip.value = '登录成功'
+  const ticketResult = await exchangeLoginTicket(loginTicket)
+  auth.setTokens(ticketResult.data.accessToken)
+  await auth.fetchMe()
+  onLoginSuccess()
+}
+
+async function handleEmailLogin() {
+  if (!validEmail()) {
+    ElMessage.warning('请输入正确的邮箱地址')
     return
   }
-  bindLoading.value = true
+  if (!emailPassword.value) {
+    ElMessage.warning('请输入邮箱账号密码')
+    return
+  }
+
+  loading.value = true
   try {
-    const { data } = await bindWechatByPassword(qrState, phone.value, password.value)
-    if (data.status === 'confirmed' && data.tokens) {
-      auth.setTokens(data.tokens.accessToken, data.tokens.refreshToken)
-      await auth.fetchMe()
-      ElMessage.success('微信已绑定，登录成功')
-      onLoginSuccess()
-    }
+    await auth.loginByEmail(email.value.trim().toLowerCase(), emailPassword.value)
+    ElMessage.success('邮箱登录成功')
+    onLoginSuccess()
+  } catch (error) {
+    ElMessage.error(getApiErrorMessage(error, '邮箱登录失败'))
   } finally {
-    bindLoading.value = false
+    loading.value = false
   }
 }
 
@@ -134,45 +198,72 @@ async function handleSendCode() {
   if (countdown.value > 0) return
   loading.value = true
   try {
-    await auth.sendCode(phone.value)
+    await auth.sendCode(phoneAccount.value.trim(), 'login')
     ElMessage.success('验证码已发送')
-    countdown.value = 60
-    countdownTimer = window.setInterval(() => {
-      countdown.value -= 1
-      if (countdown.value <= 0 && countdownTimer) clearInterval(countdownTimer)
-    }, 1000)
-  } catch {
-    ElMessage.error('验证码发送失败，请稍后重试')
+    startCodeCountdown()
+  } catch (error) {
+    if (errorDetail(error) === 'OTP_RATE_LIMITED') {
+      ElMessage.warning('验证码发送太频繁，请稍后再试')
+      startCodeCountdown()
+    } else {
+      ElMessage.error('验证码发送失败，请稍后重试')
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+async function handlePhoneLogin() {
+  if (!validPhone()) {
+    ElMessage.warning('请输入正确的手机号')
+    return
+  }
+  if (!/^\d{6}$/.test(code.value)) {
+    ElMessage.warning('请输入 6 位验证码')
+    return
+  }
+
+  loading.value = true
+  try {
+    await auth.loginByPhone(phoneAccount.value.trim(), code.value)
+    onLoginSuccess()
   } finally {
     loading.value = false
   }
 }
 
 async function handleSubmit() {
-  if (!validPhone()) {
-    ElMessage.warning('请输入正确的手机号')
+  if (!ensureAgreement()) return
+  if (mode.value === 'email') {
+    await handleEmailLogin()
+  } else if (mode.value === 'code') {
+    await handlePhoneLogin()
+  }
+}
+
+async function handleWechatBind() {
+  if (!qrState) return
+  if (!ensureAgreement()) return
+  if (!validBindAccount()) {
+    ElMessage.warning('请输入正确的手机号或邮箱')
     return
   }
-
-  loading.value = true
+  if (!bindPassword.value) {
+    ElMessage.warning('请输入该账号的登录密码')
+    return
+  }
+  bindLoading.value = true
   try {
-    if (mode.value === 'code') {
-      if (!/^\d{6}$/.test(code.value)) {
-        ElMessage.warning('请输入 6 位验证码')
-        return
-      }
-      await auth.loginByPhone(phone.value, code.value)
-      onLoginSuccess()
-    } else {
-      if (!password.value) {
-        ElMessage.warning('请输入密码')
-        return
-      }
-      await auth.loginByPassword(phone.value, password.value)
+    const { data } = await bindWechatByPassword(qrState, bindAccount.value.trim(), bindPassword.value)
+    if (data.status === 'confirmed' && data.loginTicket) {
+      const ticketResult = await exchangeLoginTicket(data.loginTicket)
+      auth.setTokens(ticketResult.data.accessToken)
+      await auth.fetchMe()
+      ElMessage.success('微信已绑定，登录成功')
       onLoginSuccess()
     }
   } finally {
-    loading.value = false
+    bindLoading.value = false
   }
 }
 
@@ -189,11 +280,32 @@ function onLoginSuccess() {
   }
 }
 
+watch(mode, (nextMode) => {
+  void nextTick(() => pulsePanel(formPanel.value))
+  if (nextMode === 'wechat') {
+    void genQR()
+  } else {
+    pendingWechatLoginTicket.value = ''
+    stopPolling()
+  }
+})
+
+watch(wechatBinding, (active) => {
+  if (active) void nextTick(() => pulsePanel(bindPanel.value))
+})
+
+watch(agreedToTerms, (accepted) => {
+  if (accepted && mode.value === 'wechat' && pendingWechatLoginTicket.value) {
+    void completeWechatLogin(pendingWechatLoginTicket.value)
+  }
+})
+
 onMounted(() => {
-  void genQR()
+  cleanupReveal = revealAuthSurface(pageRoot.value)
 })
 
 onUnmounted(() => {
+  cleanupReveal?.()
   if (countdownTimer) clearInterval(countdownTimer)
   if (expireTimer) clearTimeout(expireTimer)
   if (refreshTimer) clearInterval(refreshTimer)
@@ -202,528 +314,489 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="auth-page">
-    <section class="auth-visual">
-      <div class="brand-row">
-        <div class="brand-logo-box">
-          <img src="@/assets/keliu.png" alt="客留" class="brand-logo" />
-        </div>
-        <span class="brand-name">客留</span>
-      </div>
-      <div class="visual-copy">
-        <h1>把客户风险、营销动作和经营数据放在同一个工作台。</h1>
-        <p>适合门店每天反复使用的客户运营系统，登录后即可继续处理客户跟进、AI 评分和营销活动。</p>
-      </div>
-      <div class="visual-metrics">
-        <div>
-          <strong>AI</strong>
-          <span>流失预警</span>
-        </div>
-        <div>
-          <strong>CRM</strong>
-          <span>客户跟进</span>
-        </div>
-        <div>
-          <strong>Pay</strong>
-          <span>订阅管理</span>
-        </div>
-      </div>
-    </section>
-
-    <section class="auth-panel">
-      <div class="panel-head">
-        <span class="panel-kicker">欢迎回来</span>
-        <h2>登录客留</h2>
-        <p>使用手机号或微信扫码进入你的商家后台。</p>
-      </div>
-
-      <div class="mode-tabs">
-        <button :class="{ active: mode === 'code' }" type="button" @click="mode = 'code'">验证码</button>
-        <button :class="{ active: mode === 'password' }" type="button" @click="mode = 'password'">密码</button>
-      </div>
-
-      <div class="form-card">
-        <label class="field-label">手机号</label>
-        <div class="input-row">
-          <span class="prefix">+86</span>
-          <input v-model="phone" type="tel" maxlength="11" placeholder="请输入手机号" @keyup.enter="handleSubmit" />
-        </div>
-
-        <template v-if="mode === 'code'">
-          <label class="field-label">验证码</label>
-          <div class="input-row code-row">
-            <input v-model="code" type="text" maxlength="6" placeholder="6 位验证码" @keyup.enter="handleSubmit" />
-            <button type="button" :disabled="countdown > 0" @click="handleSendCode">
-              {{ countdown > 0 ? `${countdown}s` : '发送验证码' }}
-            </button>
+  <div ref="pageRoot">
+    <AuthShell>
+      <div class="auth-header" data-auth-item>
+        <div class="brand-title">
+          <span class="brand-emblem" aria-hidden="true">
+            <img src="@/assets/keliu.png" alt="" />
+          </span>
+          <div class="brand-copy">
+            <h1>客留</h1>
+            <p>商家经营工作台</p>
           </div>
-        </template>
+        </div>
+      </div>
 
-        <template v-else>
-          <label class="field-label">密码</label>
-          <div class="input-row pwd-row">
-            <input v-model="password" :type="showPwd ? 'text' : 'password'" placeholder="请输入密码" @keyup.enter="handleSubmit" />
-            <button class="eye" type="button" @click="showPwd = !showPwd">{{ showPwd ? '隐藏' : '显示' }}</button>
+      <AuthModeTabs v-model="mode" :options="loginModes" data-auth-item />
+
+      <div ref="formPanel" class="form-area" data-auth-item>
+        <div v-if="mode === 'email'">
+          <AuthTextInput
+            v-model="email"
+            label="邮箱"
+            placeholder="name@qq.com"
+            autocomplete="email"
+            inputmode="email"
+            @enter="handleSubmit"
+          >
+            <template #prefix>邮箱</template>
+          </AuthTextInput>
+
+          <AuthTextInput
+            v-model="emailPassword"
+            label="密码"
+            :type="showEmailPassword ? 'text' : 'password'"
+            placeholder="邮箱密码"
+            autocomplete="current-password"
+            @enter="handleSubmit"
+          >
+            <template #prefix>密码</template>
+            <template #action>
+              <button class="inline-action" type="button" @click="showEmailPassword = !showEmailPassword">
+                {{ showEmailPassword ? '隐藏' : '显示' }}
+              </button>
+            </template>
+          </AuthTextInput>
+        </div>
+
+        <div v-else-if="mode === 'code'">
+          <AuthTextInput
+            v-model="phoneAccount"
+            label="手机号"
+            placeholder="请输入手机号"
+            autocomplete="tel"
+            inputmode="tel"
+            @enter="handleSubmit"
+          >
+            <template #prefix>手机</template>
+          </AuthTextInput>
+
+          <AuthTextInput
+            v-model="code"
+            label="验证码"
+            placeholder="请输入 6 位验证码"
+            :maxlength="6"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            @enter="handleSubmit"
+          >
+            <template #prefix>验证码</template>
+            <template #action>
+              <button class="inline-action" type="button" :disabled="countdown > 0" @click="handleSendCode">
+                {{ countdown > 0 ? `${countdown}s` : '发送验证码' }}
+              </button>
+            </template>
+          </AuthTextInput>
+        </div>
+
+        <div v-else class="wechat-area">
+          <div class="qr-box" :class="{ expired: qrExpired }">
+            <img v-if="qrSrc && !qrExpired && !wechatBinding" :src="qrSrc" alt="微信登录二维码">
+            <button v-if="qrExpired && !wechatBinding" class="qr-overlay" type="button" @click="refreshQR">刷新二维码</button>
+            <div v-if="wechatBinding" class="qr-placeholder">待绑定</div>
+            <div v-else-if="!qrSrc && !qrExpired" class="qr-placeholder">加载中</div>
           </div>
-        </template>
+          <div class="wechat-title">
+            <div class="wechat-brand" aria-hidden="true">
+              <svg viewBox="0 0 32 32" focusable="false">
+                <path d="M13.6 8.4c-5.3 0-9.6 3.4-9.6 7.6 0 2.3 1.3 4.3 3.4 5.7l-.8 2.8 3.2-1.6c1.1.4 2.4.7 3.8.7 5.3 0 9.6-3.4 9.6-7.6s-4.3-7.6-9.6-7.6Z" />
+                <path d="M19.2 15.2c4.8.2 8.6 3.2 8.6 7 0 2-1.1 3.8-2.9 5.1l.7 2.3-2.8-1.4c-1 .4-2.2.6-3.5.6-4.9 0-8.9-3.1-8.9-6.9 0-3.7 3.8-6.7 8.8-6.7Z" />
+                <circle cx="10.8" cy="14.7" r="1.1" />
+                <circle cx="16.4" cy="14.7" r="1.1" />
+                <circle cx="17.1" cy="21.4" r=".9" />
+                <circle cx="22.2" cy="21.4" r=".9" />
+              </svg>
+            </div>
+            <strong>微信扫码登录</strong>
+          </div>
+          <span>{{ qrTip }}</span>
+        </div>
 
-        <button class="primary-btn" type="button" :disabled="loading" @click="handleSubmit">
+        <button
+          v-if="mode !== 'wechat'"
+          class="primary-btn"
+          type="button"
+          :disabled="loading"
+          @click="handleSubmit"
+        >
           {{ loading ? '登录中...' : '登录' }}
         </button>
       </div>
 
-      <div class="qr-card">
-        <div class="qr-box" :class="{ expired: qrExpired }">
-          <img v-if="qrSrc && !qrExpired && !wechatBinding" :src="qrSrc" alt="微信登录二维码" />
-          <button v-if="qrExpired" class="qr-overlay" type="button" @click="refreshQR">刷新二维码</button>
-          <div v-if="wechatBinding" class="qr-loading">待绑定</div>
-          <div v-if="!qrSrc && !qrExpired && !wechatBinding" class="qr-loading">加载中...</div>
+      <div v-if="wechatBinding" ref="bindPanel" class="bind-panel">
+        <div class="bind-title">
+          <strong>绑定已有账号</strong>
+          <span>首次微信登录需要确认账号归属。</span>
         </div>
-        <div>
-          <strong>微信扫码登录</strong>
-          <span>{{ qrTip }}</span>
-        </div>
-      </div>
 
-      <div v-if="wechatBinding" class="wechat-bind-card">
-        <label class="field-label">绑定手机号</label>
-        <div class="input-row">
-          <span class="prefix">+86</span>
-          <input v-model="phone" type="tel" maxlength="11" placeholder="请输入已注册手机号" />
-        </div>
-        <label class="field-label">登录密码</label>
-        <div class="input-row pwd-row">
-          <input v-model="password" :type="showPwd ? 'text' : 'password'" placeholder="输入该账号密码" @keyup.enter="handleWechatBind" />
-          <button class="eye" type="button" @click="showPwd = !showPwd">{{ showPwd ? '隐藏' : '显示' }}</button>
-        </div>
+        <AuthTextInput
+          v-model="bindAccount"
+          label="绑定账号"
+          placeholder="请输入已注册手机号或邮箱"
+          autocomplete="username"
+          inputmode="email"
+        >
+          <template #prefix>账号</template>
+        </AuthTextInput>
+
+        <AuthTextInput
+          v-model="bindPassword"
+          label="登录密码"
+          :type="showBindPassword ? 'text' : 'password'"
+          placeholder="输入该账号密码"
+          autocomplete="current-password"
+          @enter="handleWechatBind"
+        >
+          <template #prefix>密码</template>
+          <template #action>
+            <button class="inline-action" type="button" @click="showBindPassword = !showBindPassword">
+              {{ showBindPassword ? '隐藏' : '显示' }}
+            </button>
+          </template>
+        </AuthTextInput>
+
         <button class="primary-btn" type="button" :disabled="bindLoading" @click="handleWechatBind">
           {{ bindLoading ? '绑定中...' : '绑定并登录' }}
         </button>
       </div>
 
-      <div class="panel-actions">
-        <span>还没有账号？</span>
-        <button type="button" @click="router.push('/auth/signup')">创建账号</button>
+      <div class="helper-row" data-auth-item>
+        <button type="button" @click="mode = 'code'">手机验证码登录</button>
+        <button type="button" @click="router.push('/auth/signup')">免费注册</button>
       </div>
 
-      <p class="agree-text">
-        登录即代表已阅读并同意 <a href="#">用户协议</a> 和 <a href="#">隐私政策</a>
-      </p>
-    </section>
+      <label class="agree-check" data-auth-item>
+        <input v-model="agreedToTerms" type="checkbox">
+        <span>
+          我已阅读并同意
+          <a href="#" @click.stop>用户协议</a>
+          和
+          <a href="#" @click.stop>隐私政策</a>
+        </span>
+      </label>
+    </AuthShell>
   </div>
 </template>
 
 <style scoped>
-.auth-page {
-  min-height: 100vh;
-  display: grid;
-  grid-template-columns: minmax(360px, 1.05fr) minmax(420px, 0.95fr);
-  background: #f6f8fb;
-  color: #111827;
+.auth-header {
+  display: flex;
+  justify-content: center;
 }
 
-.auth-visual {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  gap: clamp(56px, 9vh, 92px);
-  padding: 34px 48px 42px;
-  background:
-    linear-gradient(135deg, rgba(0, 114, 178, 0.12), transparent 42%),
-    linear-gradient(160deg, #102033 0%, #182c3a 48%, #143529 100%);
-  color: #fff;
-}
-
-.brand-row {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-}
-
-.brand-logo-box {
-  width: 300px;
-  height: 130px;
-  display: flex;
+.brand-title {
+  display: inline-grid;
+  grid-template-columns: auto auto;
   align-items: center;
   justify-content: center;
-  padding: 10px 14px;
-  border-radius: 14px;
-  background: #fff;
-  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.16);
+  gap: 16px;
+  padding: 2px 8px 4px;
 }
 
-.brand-logo {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-.brand-name {
-  font-size: 2.35rem;
-  font-weight: 700;
-  letter-spacing: 0;
-}
-
-.visual-copy {
-  max-width: 760px;
-}
-
-.panel-kicker {
+.brand-emblem {
+  width: 86px;
+  height: 42px;
   display: inline-flex;
-  margin-bottom: 14px;
-  color: #7dd3fc;
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-.visual-copy h1 {
-  margin: 0;
-  font-size: clamp(2rem, 4vw, 4.2rem);
-  line-height: 1.05;
-  letter-spacing: 0;
-}
-
-.visual-copy p {
-  max-width: 540px;
-  margin: 22px 0 0;
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 1rem;
-  line-height: 1.8;
-}
-
-.visual-metrics {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  max-width: 560px;
-}
-
-.visual-metrics div {
-  min-height: 86px;
-  padding: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  border: 1px solid rgba(217, 173, 85, 0.22);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.07);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(243, 231, 204, 0.48));
+  box-shadow: 0 14px 30px rgba(97, 72, 26, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  filter: drop-shadow(0 10px 18px rgba(97, 72, 26, 0.16));
 }
 
-.visual-metrics strong,
-.visual-metrics span {
+.brand-emblem img {
+  width: 78px;
+  height: 34px;
+  object-fit: contain;
   display: block;
 }
 
-.visual-metrics strong {
-  font-size: 1.15rem;
+.brand-copy {
+  display: grid;
+  gap: 3px;
 }
 
-.visual-metrics span {
-  margin-top: 6px;
-  color: rgba(255, 255, 255, 0.62);
-  font-size: 0.82rem;
-}
-
-.auth-panel {
-  align-self: center;
-  width: min(440px, calc(100% - 48px));
-  margin: 0 auto;
-  padding: 40px 0;
-}
-
-.panel-head {
-  margin-bottom: 24px;
-}
-
-.panel-kicker {
-  color: #0072b2;
-}
-
-.panel-head h2 {
+.brand-copy h1 {
   margin: 0;
-  font-size: 1.8rem;
+  color: #101827;
+  font-size: 2rem;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.brand-copy p {
+  margin: 0;
+  color: #5f6f80;
+  font-size: 0.88rem;
+  font-weight: 680;
   line-height: 1.2;
 }
 
-.panel-head p {
-  margin: 8px 0 0;
-  color: #6b7280;
-  font-size: 0.95rem;
+.form-area {
+  position: relative;
 }
 
-.mode-tabs {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 4px;
-  padding: 4px;
-  margin-bottom: 18px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  background: #eef2f7;
-}
-
-.mode-tabs button {
-  height: 38px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: #6b7280;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.mode-tabs button.active {
-  background: #fff;
-  color: #0072b2;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
-}
-
-.form-card,
-.qr-card,
-.wechat-bind-card {
-  border: 1px solid #e3e8ef;
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.06);
-}
-
-.form-card {
-  padding: 22px;
-}
-
-.wechat-bind-card {
-  padding: 18px;
-  margin-top: 14px;
-}
-
-.field-label {
-  display: block;
-  margin-bottom: 8px;
-  color: #374151;
-  font-size: 0.82rem;
-  font-weight: 700;
-}
-
-.input-row {
-  display: flex;
-  align-items: center;
-  height: 46px;
-  margin-bottom: 16px;
-  border: 1px solid #dbe3ec;
-  border-radius: 8px;
-  overflow: hidden;
-  background: #fff;
-}
-
-.input-row:focus-within {
-  border-color: #0072b2;
-  box-shadow: 0 0 0 3px rgba(0, 114, 178, 0.12);
-}
-
-.prefix {
-  display: flex;
-  align-items: center;
+.inline-action {
   height: 100%;
+  min-width: 92px;
   padding: 0 12px;
-  border-right: 1px solid #e5e7eb;
-  color: #6b7280;
-  background: #f9fafb;
-  font-size: 0.9rem;
-}
-
-.input-row input {
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-  padding: 0 14px;
   border: 0;
-  outline: none;
-  background: transparent;
-  color: #111827;
-  font-size: 0.95rem;
-}
-
-.code-row button,
-.pwd-row .eye {
-  height: 100%;
-  padding: 0 14px;
-  border: 0;
-  border-left: 1px solid #e5e7eb;
-  background: #fff;
-  color: #0072b2;
-  font-size: 0.82rem;
-  font-weight: 700;
+  background: linear-gradient(180deg, rgba(250, 253, 254, 0.9), rgba(238, 246, 249, 0.82));
+  color: #0f6f88;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 760;
   white-space: nowrap;
   cursor: pointer;
+  transition: background 180ms ease, color 180ms ease;
 }
 
-.code-row button:disabled {
-  color: #9ca3af;
+.inline-action:hover {
+  background: #ffffff;
+  color: #0b596d;
+}
+
+.inline-action:disabled {
+  color: #97a3b2;
   cursor: not-allowed;
 }
 
 .primary-btn {
   width: 100%;
-  height: 46px;
+  min-height: 50px;
+  position: relative;
+  overflow: hidden;
   border: 0;
   border-radius: 8px;
-  background: #0072b2;
+  background: linear-gradient(135deg, #0d7188 0%, #1091a3 52%, #0b687d 100%);
   color: #fff;
-  font-size: 0.95rem;
-  font-weight: 700;
+  font: inherit;
+  font-size: 0.96rem;
+  font-weight: 780;
   cursor: pointer;
-  box-shadow: 0 10px 22px rgba(0, 114, 178, 0.22);
+  box-shadow: 0 16px 32px rgba(15, 111, 136, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transition: box-shadow 180ms ease, filter 180ms ease;
+}
+
+.primary-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 -40%;
+  width: 36%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.32), transparent);
+  transform: skewX(-18deg);
+  transition: transform 520ms ease;
 }
 
 .primary-btn:hover {
-  background: #005f95;
+  filter: saturate(1.08);
+  box-shadow: 0 20px 40px rgba(15, 111, 136, 0.31), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+
+.primary-btn:hover::before {
+  transform: translateX(410%) skewX(-18deg);
 }
 
 .primary-btn:disabled {
-  opacity: 0.58;
+  opacity: 0.62;
   cursor: not-allowed;
+  transform: none;
 }
 
-.qr-card {
+.wechat-area {
   display: grid;
-  grid-template-columns: 96px 1fr;
-  gap: 16px;
+  justify-items: center;
+  gap: 12px;
+  padding: 10px 0 4px;
+  color: #667386;
+  text-align: center;
+}
+
+.wechat-title {
+  display: inline-flex;
   align-items: center;
-  padding: 16px;
-  margin-top: 14px;
+  justify-content: center;
+  gap: 8px;
 }
 
-.qr-card strong,
-.qr-card span {
-  display: block;
+.wechat-brand {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #12a94b, #18c465);
+  box-shadow: 0 10px 20px rgba(22, 163, 74, 0.24);
+  flex: 0 0 auto;
 }
 
-.qr-card strong {
-  color: #1f2937;
-  font-size: 0.92rem;
+.wechat-brand svg {
+  width: 18px;
+  height: 18px;
+  fill: #fff;
 }
 
-.qr-card span {
-  margin-top: 4px;
-  color: #6b7280;
-  font-size: 0.82rem;
+.wechat-title strong {
+  color: #172033;
+  font-size: 1rem;
+}
+
+.wechat-area span {
+  font-size: 0.86rem;
 }
 
 .qr-box {
-  width: 96px;
-  height: 96px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 184px;
+  height: 184px;
+  display: grid;
+  place-items: center;
   position: relative;
   overflow: hidden;
-  border: 1px solid #e5e7eb;
+  border: 1px solid rgba(22, 163, 74, 0.2);
   border-radius: 8px;
-  background: #fff;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fcf9 100%);
+  box-shadow: inset 0 0 0 8px rgba(22, 163, 74, 0.05), 0 18px 36px rgba(15, 23, 42, 0.09);
+}
+
+.qr-box::after {
+  content: '';
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 24px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(22, 163, 74, 0.55), transparent);
+  box-shadow: 0 0 14px rgba(22, 163, 74, 0.36);
+  animation: qrScan 2.4s ease-in-out infinite;
 }
 
 .qr-box img {
-  width: 88px;
-  height: 88px;
+  width: 164px;
+  height: 164px;
+  border-radius: 6px;
 }
 
 .qr-overlay {
   position: absolute;
   inset: 0;
   border: 0;
-  background: rgba(255, 255, 255, 0.92);
-  color: #0072b2;
-  font-size: 0.82rem;
-  font-weight: 700;
+  background: rgba(255, 255, 255, 0.94);
+  color: #0f6f88;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 760;
   cursor: pointer;
 }
 
-.qr-loading {
-  color: #6b7280;
-  font-size: 0.82rem;
-}
-
-.panel-actions {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 18px;
-  color: #6b7280;
+.qr-placeholder {
+  color: #667386;
   font-size: 0.88rem;
 }
 
-.panel-actions button {
+.bind-panel {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid rgba(15, 111, 136, 0.16);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(242, 251, 252, 0.92), rgba(235, 246, 249, 0.82));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.bind-title {
+  margin-bottom: 14px;
+}
+
+.bind-title strong,
+.bind-title span {
+  display: block;
+}
+
+.bind-title strong {
+  color: #172033;
+  font-size: 0.96rem;
+}
+
+.bind-title span {
+  margin-top: 4px;
+  color: #667386;
+  font-size: 0.84rem;
+}
+
+.helper-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.helper-row button {
   padding: 0;
   border: 0;
   background: transparent;
-  color: #0072b2;
-  font-weight: 700;
+  color: #0f6f88;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 760;
+  cursor: pointer;
+  transition: color 160ms ease, transform 160ms ease;
+}
+
+.helper-row button:hover {
+  color: #0b596d;
+  transform: translateY(-1px);
+}
+
+.agree-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 16px 0 0;
+  color: #7a8797;
+  font-size: 0.76rem;
+  line-height: 1.7;
   cursor: pointer;
 }
 
-.agree-text {
-  margin: 16px 0 0;
-  color: #8a94a3;
-  font-size: 0.76rem;
-  line-height: 1.7;
-  text-align: center;
+.agree-check input {
+  width: 15px;
+  height: 15px;
+  margin: 3px 0 0;
+  flex: 0 0 auto;
+  accent-color: #0f6f88;
 }
 
-@media (max-width: 900px) {
-  .auth-page {
-    grid-template-columns: 1fr;
+.agree-check a {
+  color: #0f6f88;
+  font-weight: 680;
+}
+
+@keyframes qrScan {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.22;
   }
 
-  .auth-visual {
-    min-height: 320px;
-    padding: 32px;
-    gap: 36px;
-  }
-
-  .brand-logo-box {
-    width: 230px;
-    height: 100px;
-  }
-
-  .brand-name {
-    font-size: 1.8rem;
-  }
-
-  .visual-metrics {
-    display: none;
-  }
-
-  .auth-panel {
-    width: min(460px, calc(100% - 32px));
-    padding: 32px 0 48px;
+  50% {
+    transform: translateY(132px);
+    opacity: 0.78;
   }
 }
 
-@media (max-width: 520px) {
-  .auth-visual {
-    min-height: 240px;
-    padding: 24px;
-  }
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid rgba(15, 111, 136, 0.22);
+  outline-offset: 2px;
+}
 
-  .visual-copy h1 {
-    font-size: 1.8rem;
-  }
-
-  .brand-logo-box {
-    width: 184px;
-    height: 80px;
-    padding: 8px 12px;
-  }
-
-  .brand-name {
-    font-size: 1.5rem;
-  }
-
-  .visual-copy p {
-    font-size: 0.9rem;
-  }
-
-  .form-card {
-    padding: 18px;
+@media (max-width: 420px) {
+  .helper-row {
+    flex-direction: column;
+    align-items: center;
   }
 }
 </style>
