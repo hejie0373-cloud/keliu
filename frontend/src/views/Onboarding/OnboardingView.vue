@@ -88,37 +88,43 @@ onMounted(() => {
 })
 </script>
 <template>
-  <div class="page-container" style="max-width:600px;margin:0 auto;padding-top:48px">
-    <el-steps :active="step - 1" align-center style="margin-bottom:32px">
+  <div class="onboarding-page">
+    <header class="onboarding-hero" v-reveal>
+      <span class="hero-kicker">新店引导</span>
+      <h1>把店铺、套餐和第一批客户准备好。</h1>
+      <p>三步完成基础配置，进入仪表盘后可以继续补充客户资料和营销动作。</p>
+    </header>
+
+    <el-steps :active="step - 1" align-center class="onboarding-steps">
       <el-step title="店铺信息" />
       <el-step title="选择套餐" />
       <el-step title="导入客户" />
     </el-steps>
 
-    <div v-if="isStepOne" class="card">
-      <h2 style="margin-bottom:8px">创建你的店铺</h2>
-      <p style="color:var(--ink-muted);margin-bottom:24px">新店铺默认有 5 次免费体验，用完后再选择套餐付费。</p>
+    <div v-if="isStepOne" class="card onboarding-card" v-reveal>
+      <h2>创建你的店铺</h2>
+      <p class="card-desc">新店铺默认有 5 次免费体验，用完后再选择套餐付费。</p>
       <el-form label-position="top">
         <el-form-item label="店铺名称" required>
           <el-input v-model="storeForm.name" placeholder="例如：张老板美容美发" size="large" />
         </el-form-item>
         <el-form-item label="行业类型">
-          <el-select v-model="storeForm.industryType" placeholder="选择行业" size="large" style="width:100%">
+          <el-select v-model="storeForm.industryType" placeholder="选择行业" size="large" class="full-select">
             <el-option v-for="ind in industries" :key="ind" :label="ind" :value="ind" />
           </el-select>
         </el-form-item>
         <el-form-item label="店铺地址">
           <el-input v-model="storeForm.address" placeholder="可选" size="large" />
         </el-form-item>
-        <el-button type="primary" size="large" :loading="loading" style="width:100%" @click="createStore">
+        <el-button type="primary" size="large" :loading="loading" class="full-btn" @click="createStore">
           下一步
         </el-button>
       </el-form>
     </div>
 
-    <div v-if="isStepTwo">
-      <h2 style="text-align:center;margin-bottom:24px">选择套餐</h2>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+    <div v-if="isStepTwo" class="plan-section" v-reveal>
+      <h2>选择套餐</h2>
+      <div class="plan-grid">
         <div
           v-for="p in plans"
           :key="p.id"
@@ -127,32 +133,32 @@ onMounted(() => {
         >
           <div v-if="p.recommended" class="plan-badge">推荐</div>
           <div class="plan-name">{{ p.name }}</div>
-          <div class="plan-price">¥{{ p.price }}<span style="font-size:0.9rem;color:var(--ink-muted)">/月</span></div>
+          <div class="plan-price">¥{{ p.price }}<span>/月</span></div>
           <div class="plan-desc">{{ p.desc }}</div>
-          <div style="font-size:0.85rem;color:var(--ink-muted);margin-top:8px">最多 {{ p.customers }} 位客户</div>
+          <div class="plan-limit">最多 {{ p.customers }} 位客户</div>
         </div>
       </div>
-      <el-button type="primary" size="large" :loading="loading" style="width:100%;margin-top:24px" @click="selectPlan">
+      <el-button type="primary" size="large" :loading="loading" class="full-btn plan-submit" @click="selectPlan">
         模拟支付并开通
       </el-button>
     </div>
 
-    <div v-if="isStepThree" class="card" style="text-align:center">
-      <h2 style="margin-bottom:8px">导入第一批客户</h2>
-      <p style="color:var(--ink-muted);margin-bottom:24px">上传 CSV 文件，或跳过稍后导入。</p>
+    <div v-if="isStepThree" class="card onboarding-card import-card" v-reveal>
+      <h2>导入第一批客户</h2>
+      <p class="card-desc">上传 CSV 文件，或跳过稍后导入。</p>
 
-      <div v-if="!importDone" style="padding:32px;border:2px dashed var(--border);border-radius:8px;margin-bottom:16px">
+      <div v-if="!importDone" class="upload-shell">
         <el-upload drag :auto-upload="false" accept=".csv" :show-file-list="false" :on-change="(f: any) => handleFile(f.raw)">
-          <div style="padding:24px">
-            <p style="font-size:2rem;margin-bottom:8px">CSV</p>
+          <div class="upload-inner">
+            <p class="upload-icon">CSV</p>
             <p v-if="!uploading">拖拽 CSV 到此处或点击上传</p>
             <p v-else>导入中...</p>
           </div>
         </el-upload>
       </div>
-      <div v-else style="padding:24px;color:var(--success);font-size:1.1rem">导入完成</div>
+      <div v-else class="import-done">导入完成</div>
 
-      <div style="display:flex;gap:12px;justify-content:center;margin-top:16px">
+      <div class="finish-actions">
         <el-button size="large" @click="finish">跳过</el-button>
         <el-button type="primary" size="large" @click="finish">进入仪表盘</el-button>
       </div>
@@ -160,6 +166,88 @@ onMounted(() => {
   </div>
 </template>
 <style scoped>
+.onboarding-page {
+  width: min(760px, 100%);
+  margin: 0 auto;
+  padding: 42px 24px 48px;
+}
+
+.onboarding-hero {
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.hero-kicker {
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.onboarding-hero h1,
+.onboarding-card h2,
+.plan-section h2 {
+  margin: 8px 0 0;
+  color: var(--ink);
+  letter-spacing: 0;
+}
+
+.onboarding-hero h1 {
+  font-size: 1.55rem;
+}
+
+.onboarding-hero p,
+.card-desc {
+  color: var(--ink-muted);
+  line-height: 1.6;
+}
+
+.onboarding-hero p {
+  margin: 10px auto 0;
+  max-width: 560px;
+}
+
+.onboarding-steps {
+  margin-bottom: 28px;
+}
+
+.onboarding-card {
+  padding: 26px;
+  border-radius: 8px;
+  text-align: left;
+}
+
+.onboarding-card h2,
+.plan-section h2 {
+  margin-bottom: 8px;
+  font-size: 1.15rem;
+}
+
+.card-desc {
+  margin: 0 0 24px;
+}
+
+.full-btn {
+  width: 100%;
+}
+
+.full-select {
+  width: 100%;
+}
+
+.plan-section {
+  text-align: center;
+}
+
+.plan-section h2 {
+  margin-bottom: 24px;
+}
+
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
 .plan-card {
   background: var(--surface);
   border: 2px solid var(--border);
@@ -175,11 +263,66 @@ onMounted(() => {
 .plan-card.recommended { border-color: var(--accent); }
 .plan-badge {
   position: absolute; top: -10px; right: 16px;
-  background: var(--accent); color: white; padding: 2px 12px; border-radius: 100px; font-size: 0.8rem; font-weight: 600;
+  background: var(--accent); color: var(--accent-contrast); padding: 2px 12px; border-radius: 100px; font-size: 0.8rem; font-weight: 600;
 }
 .plan-name { font-size: 1rem; font-weight: 700; margin-bottom: 8px; }
 .plan-price { font-size: 2rem; font-weight: 700; color: var(--accent); }
+.plan-price span {
+  color: var(--ink-muted);
+  font-size: 0.9rem;
+}
 .plan-desc { font-size: 0.85rem; color: var(--ink-muted); margin-top: 4px; }
+.plan-limit {
+  color: var(--ink-muted);
+  font-size: 0.85rem;
+  margin-top: 8px;
+}
+.plan-submit {
+  margin-top: 24px;
+}
+
+.import-card {
+  text-align: center;
+}
+
+.upload-shell {
+  margin-bottom: 16px;
+  padding: 32px;
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.upload-inner {
+  padding: 24px;
+}
+
+.upload-icon {
+  margin: 0 0 8px;
+  color: var(--accent);
+  font-size: 2rem;
+  font-weight: 800;
+}
+
+.import-done {
+  padding: 24px;
+  color: var(--success);
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.finish-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+@media (max-width: 720px) {
+  .plan-grid {
+    grid-template-columns: 1fr;
+  }
+}
 </style>
 
 

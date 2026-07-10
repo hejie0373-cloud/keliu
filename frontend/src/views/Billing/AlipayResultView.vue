@@ -75,7 +75,7 @@ onMounted(confirmPayment)
 
 <template>
   <div class="result-page">
-    <main class="result-panel">
+    <main class="result-panel" v-reveal>
       <div class="brand-mark">支</div>
       <h1>支付宝支付</h1>
       <div class="status-icon" :class="status">
@@ -98,15 +98,17 @@ onMounted(confirmPayment)
   min-height: 100vh;
   display: grid;
   place-items: center;
-  background: #f6f8fb;
+  background:
+    radial-gradient(circle at 50% 0%, color-mix(in oklch, var(--accent-light) 55%, transparent), transparent 38%),
+    var(--bg);
   padding: 24px;
 }
 .result-panel {
   width: min(420px, 100%);
-  background: #fff;
-  border: 1px solid #e3e8ef;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+  box-shadow: var(--shadow-lg);
   padding: 32px;
   text-align: center;
 }
@@ -125,7 +127,7 @@ onMounted(confirmPayment)
 h1 {
   margin: 0 0 22px;
   font-size: 1.25rem;
-  color: #111827;
+  color: var(--ink);
 }
 .status-icon {
   width: 64px;
@@ -139,34 +141,34 @@ h1 {
 }
 .status-icon.checking,
 .status-icon.pending {
-  background: #eff6ff;
+  background: color-mix(in oklch, #1677ff 14%, var(--surface));
   color: #1677ff;
 }
 .status-icon.paid {
-  background: #ecfdf5;
-  color: #009e73;
+  background: var(--success-light);
+  color: var(--success);
 }
 .status-icon.failed {
-  background: #fef2f2;
-  color: #d55e00;
+  background: var(--danger-light);
+  color: var(--danger);
 }
 .spinner {
   width: 24px;
   height: 24px;
-  border: 3px solid #bfdbfe;
+  border: 3px solid color-mix(in oklch, #1677ff 24%, var(--surface));
   border-top-color: #1677ff;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 .message {
-  color: #374151;
+  color: var(--ink);
   font-size: 0.95rem;
   margin: 0;
 }
 .order-line {
   margin: 10px 0 0;
-  color: #9ca3af;
+  color: var(--ink-subtle);
   font-size: 0.78rem;
   word-break: break-all;
 }
@@ -176,12 +178,14 @@ h1 {
   padding: 12px 14px;
   border: none;
   border-radius: 8px;
-  background: #0072b2;
-  color: #fff;
+  background: var(--accent);
+  color: var(--accent-contrast);
   font-weight: 700;
   cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
 }
 .primary-btn:hover {
-  background: #005f95;
+  background: var(--accent-hover);
+  transform: translateY(-1px);
 }
 </style>

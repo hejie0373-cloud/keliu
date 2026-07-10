@@ -94,7 +94,7 @@ onMounted(reload)
     <button class="back-link" @click="$router.push('/admin/stores')">← 返回店铺列表</button>
 
     <template v-if="store">
-      <header class="hero-bar">
+      <header class="hero-bar" v-reveal>
         <div class="hero-left">
           <div class="avatar">{{ store.name[0] }}</div>
           <div>
@@ -108,15 +108,15 @@ onMounted(reload)
         </div>
       </header>
 
-      <div class="body-grid">
+      <div class="body-grid" v-reveal>
         <div class="col">
           <!-- Subscription -->
           <section class="card">
             <h3 class="card-title">订阅管理</h3>
-            <div class="fg"><label>套餐</label><el-select v-model="subForm.planName" style="width:100%"><el-option v-for="o in planOpts" :key="o.value" :label="o.label" :value="o.value" /></el-select></div>
-            <div class="fg"><label>状态</label><el-select v-model="subForm.status" style="width:100%"><el-option v-for="o in statusOpts" :key="o.value" :label="o.label" :value="o.value" /></el-select></div>
-            <div class="fg"><label>客户上限</label><el-input-number v-model="subForm.customerLimit" :min="0" :max="99999" style="width:100%" /></div>
-            <div class="fg"><label>到期日期</label><el-date-picker v-model="subForm.nextBillingDate" type="date" value-format="YYYY-MM-DD" style="width:100%" /></div>
+            <div class="fg"><label>套餐</label><el-select v-model="subForm.planName" class="full-control"><el-option v-for="o in planOpts" :key="o.value" :label="o.label" :value="o.value" /></el-select></div>
+            <div class="fg"><label>状态</label><el-select v-model="subForm.status" class="full-control"><el-option v-for="o in statusOpts" :key="o.value" :label="o.label" :value="o.value" /></el-select></div>
+            <div class="fg"><label>客户上限</label><el-input-number v-model="subForm.customerLimit" :min="0" :max="99999" class="full-control" /></div>
+            <div class="fg"><label>到期日期</label><el-date-picker v-model="subForm.nextBillingDate" type="date" value-format="YYYY-MM-DD" class="full-control" /></div>
             <button class="btn-primary" :disabled="saving" @click="saveSub">{{ saving ? '保存中...' : '保存订阅' }}</button>
           </section>
 
@@ -134,7 +134,7 @@ onMounted(reload)
               <label :class="['rchip', { on: restrictions.campaign }]"><input type="checkbox" v-model="restrictions.campaign" /><span class="rcb" /><div><strong>营销活动</strong><small>禁止创建和发送营销活动</small></div></label>
               <label :class="['rchip', { on: restrictions.export }]"><input type="checkbox" v-model="restrictions.export" /><span class="rcb" /><div><strong>数据导出</strong><small>禁止导出 CSV 文件</small></div></label>
             </div>
-            <button class="btn-secondary" :disabled="restrictionSaving" @click="saveRestrictions" style="margin-top:12px;width:100%">{{ restrictionSaving ? '保存中...' : '保存限制' }}</button>
+            <button class="btn-secondary restriction-save" :disabled="restrictionSaving" @click="saveRestrictions">{{ restrictionSaving ? '保存中...' : '保存限制' }}</button>
 
             <div class="user-section">
               <h4>店铺人员</h4>
@@ -216,17 +216,18 @@ onMounted(reload)
 /* Forms */
 .fg { margin-bottom: 12px; }
 .fg label { display: block; margin-bottom: 5px; font-size: 0.74rem; font-weight: 700; color: var(--admin-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+.full-control { width: 100%; }
 
 /* Buttons */
 .btn-primary { width: 100%; padding: 10px; border: none; border-radius: 6px; background: var(--admin-accent); color: #fff; font-size: 0.86rem; font-weight: 600; cursor: pointer; transition: all 0.15s; }
-.btn-primary:hover { background: #1557b0; }
+.btn-primary:hover { background: color-mix(in srgb, var(--admin-accent) 78%, #000); }
 .btn-primary:disabled { opacity: 0.5; cursor: default; }
 .btn-secondary { padding: 8px 14px; border: 1px solid var(--admin-border); border-radius: 6px; background: var(--admin-surface); color: var(--admin-text-secondary); font-size: 0.82rem; cursor: pointer; transition: all 0.15s; }
 .btn-secondary:hover { border-color: var(--admin-accent); color: var(--admin-accent); }
 .btn-sm { padding: 4px 12px; border-radius: 4px; border: 1px solid; font-size: 0.74rem; font-weight: 600; cursor: pointer; transition: all 0.15s; background: transparent; }
-.btn-danger { border-color: #fecaca; color: var(--admin-red); }
+.btn-danger { border-color: var(--admin-red-light); color: var(--admin-red); }
 .btn-danger:hover { background: var(--admin-red-light); }
-.btn-ok { border-color: #a7f3d0; color: var(--admin-green); }
+.btn-ok { border-color: var(--admin-green-light); color: var(--admin-green); }
 .btn-ok:hover { background: var(--admin-green-light); }
 
 /* Tags */
@@ -234,18 +235,18 @@ onMounted(reload)
 .tag-ok { background: var(--admin-green-light); color: var(--admin-green); }
 .tag-warn { background: var(--admin-amber-light); color: var(--admin-amber); }
 .tag-bad { background: var(--admin-red-light); color: var(--admin-red); }
-.tag-dim { background: #f3f4f6; color: var(--admin-text-secondary); }
+.tag-dim { background: color-mix(in srgb, var(--admin-accent-light) 22%, var(--admin-surface)); color: var(--admin-text-secondary); }
 .role-tag { font-size: 0.7rem; color: var(--admin-accent); background: var(--admin-accent-light); padding: 1px 8px; border-radius: 3px; font-weight: 600; }
 
 /* Users */
 .user-section { margin-top: 20px; border-top: 1px solid var(--admin-border); padding-top: 14px; }
 .user-section h4 { margin: 0 0 10px; font-size: 0.8rem; font-weight: 700; color: var(--admin-text-secondary); }
-.user-row { display: flex; align-items: center; justify-content: space-between; padding: 11px 0; border-bottom: 1px solid #f3f4f6; gap: 12px; }
+.user-row { display: flex; align-items: center; justify-content: space-between; padding: 11px 0; border-bottom: 1px solid var(--admin-border); gap: 12px; }
 .user-row:last-child { border-bottom: none; }
 .user-info { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .uav { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.76rem; font-weight: 700; flex-shrink: 0; }
 .owner-av { background: var(--admin-accent-light); color: var(--admin-accent); }
-.staff-av { background: #f3f4f6; color: var(--admin-text-secondary); }
+.staff-av { background: color-mix(in srgb, var(--admin-accent-light) 22%, var(--admin-surface)); color: var(--admin-text-secondary); }
 .user-info strong { display: block; font-size: 0.84rem; color: var(--admin-text); }
 .user-info span { font-size: 0.74rem; color: var(--admin-text-secondary); }
 .user-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
@@ -255,19 +256,20 @@ onMounted(reload)
 
 /* Restrict */
 .rlist { display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px; }
-.rchip { display: flex; align-items: flex-start; gap: 12px; padding: 10px 14px; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer; transition: all 0.15s; }
-.rchip:hover { border-color: #d1d5db; background: #fafbfc; }
+.restriction-save { width: 100%; margin-top: 12px; }
+.rchip { display: flex; align-items: flex-start; gap: 12px; padding: 10px 14px; border: 1px solid var(--admin-border); border-radius: 8px; cursor: pointer; transition: all 0.15s; }
+.rchip:hover { border-color: var(--admin-text-secondary); background: color-mix(in srgb, var(--admin-accent-light) 16%, var(--admin-surface)); }
 .rchip.on { border-color: var(--admin-red); background: var(--admin-red-light); }
 .rchip input { display: none; }
-.rcb { width: 20px; height: 20px; border-radius: 5px; border: 2px solid #d1d5db; flex-shrink: 0; transition: all 0.15s; display: flex; align-items: center; justify-content: center; }
+.rcb { width: 20px; height: 20px; border-radius: 5px; border: 2px solid var(--admin-border); flex-shrink: 0; transition: all 0.15s; display: flex; align-items: center; justify-content: center; }
 .rchip.on .rcb { border-color: var(--admin-red); background: var(--admin-red); }
 .rchip.on .rcb::after { content: '✕'; color: #fff; font-size: 11px; font-weight: 700; }
 .rchip strong { display: block; font-size: 0.84rem; color: var(--admin-text); }
 .rchip small { display: block; font-size: 0.74rem; color: var(--admin-text-secondary); margin-top: 2px; }
-.rchip.on strong { color: #991b1b; }
+.rchip.on strong { color: var(--admin-red); }
 
 /* Customers */
-.cust-row { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid #f3f4f6; }
+.cust-row { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--admin-border); }
 .cust-row:last-child { border-bottom: none; }
 .cn { font-weight: 600; font-size: 0.84rem; color: var(--admin-text); }
 .cm { font-size: 0.78rem; color: var(--admin-text-secondary); }
@@ -276,11 +278,11 @@ onMounted(reload)
 /* Mini table */
 .mini-table-wrap { border-radius: 6px; overflow: hidden; }
 .mini-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
-.mini-table thead { background: #f9fafb; }
+.mini-table thead { background: color-mix(in srgb, var(--admin-accent-light) 28%, var(--admin-surface)); }
 .mini-table th { padding: 8px 10px; text-align: left; font-size: 0.7rem; font-weight: 700; color: var(--admin-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--admin-border); }
-.mini-table td { padding: 7px 10px; border-bottom: 1px solid #f3f4f6; color: var(--admin-text); }
+.mini-table td { padding: 7px 10px; border-bottom: 1px solid var(--admin-border); color: var(--admin-text); }
 .mini-table tr:last-child td { border-bottom: none; }
-.mini-table tbody tr:hover { background: #fafbfc; }
+.mini-table tbody tr:hover { background: color-mix(in srgb, var(--admin-accent-light) 20%, var(--admin-surface)); }
 .mono { font-family: 'SF Mono','Cascadia Code','Consolas',monospace; font-size: 0.74rem; }
 .time { color: var(--admin-text-secondary); }
 

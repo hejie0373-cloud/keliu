@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import http from '@/api/http'
+import http, { getApiErrorMessage } from '@/api/http'
 
 interface Overview {
   totalStores: number; totalUsers: number; activeUsers: number
@@ -19,15 +19,19 @@ const error = ref('')
 
 function money(c: number) { return `¥${(c / 100).toFixed(2)}` }
 const planLabels: Record<string, string> = { free: '免费版', basic: '基础版', professional: '专业版' }
-const planColors: Record<string, string> = { free: '#0d9488', basic: '#1a73e8', professional: '#7c3aed' }
+const planColors: Record<string, string> = {
+  free: 'var(--admin-teal)',
+  basic: 'var(--admin-accent)',
+  professional: 'var(--admin-purple)',
+}
 const statusLabels: Record<string, string> = { active: '活跃', overdue: '过期', cancelled: '取消' }
 
 onMounted(async () => {
   try {
     const { data } = await http.get('/admin/overview')
     overview.value = data as any
-  } catch (e: any) {
-    error.value = e?.response?.data?.detail || '加载失败'
+  } catch (e) {
+    error.value = getApiErrorMessage(e, '加载失败')
   }
 })
 </script>
@@ -37,15 +41,15 @@ onMounted(async () => {
     <div v-if="error" class="err-msg">{{ error }}</div>
 
     <template v-if="overview">
-      <header class="hero">
+      <header class="hero" v-reveal>
         <h1>平台总览</h1>
         <p>实时监控平台运营数据：商家规模、营收流水、客户增长、订阅分布</p>
       </header>
 
       <!-- Row 1: 核心指标 -->
-      <div class="kpi-row">
+      <div class="kpi-row" v-reveal>
         <div class="kpi">
-          <div class="kpi-icon" style="background:#e8f0fe;color:#1a73e8">◆</div>
+          <div class="kpi-icon kpi-icon--blue">◆</div>
           <div class="kpi-body">
             <span class="kpi-label">总店铺</span>
             <strong class="kpi-value">{{ overview.totalStores }}</strong>
@@ -53,7 +57,7 @@ onMounted(async () => {
           </div>
         </div>
         <div class="kpi">
-          <div class="kpi-icon" style="background:#f5f3ff;color:#7c3aed">◆</div>
+          <div class="kpi-icon kpi-icon--purple">◆</div>
           <div class="kpi-body">
             <span class="kpi-label">平台用户</span>
             <strong class="kpi-value">{{ overview.totalUsers }}</strong>
@@ -61,7 +65,7 @@ onMounted(async () => {
           </div>
         </div>
         <div class="kpi">
-          <div class="kpi-icon" style="background:#ecfdf5;color:#059669">◆</div>
+          <div class="kpi-icon kpi-icon--green">◆</div>
           <div class="kpi-body">
             <span class="kpi-label">客户总数</span>
             <strong class="kpi-value">{{ overview.totalCustomers }}</strong>
@@ -69,7 +73,7 @@ onMounted(async () => {
           </div>
         </div>
         <div class="kpi kpi--warn">
-          <div class="kpi-icon" style="background:#fef3c7;color:#d97706">!</div>
+          <div class="kpi-icon kpi-icon--amber">!</div>
           <div class="kpi-body">
             <span class="kpi-label">高风险客户</span>
             <strong class="kpi-value">{{ overview.highRiskCustomers }}</strong>
@@ -77,7 +81,7 @@ onMounted(async () => {
           </div>
         </div>
         <div class="kpi">
-          <div class="kpi-icon" style="background:#e8f0fe;color:#1a73e8">￥</div>
+          <div class="kpi-icon kpi-icon--blue">￥</div>
           <div class="kpi-body">
             <span class="kpi-label">今日营收</span>
             <strong class="kpi-value">{{ money(overview.todayRevenueCents) }}</strong>
@@ -87,7 +91,7 @@ onMounted(async () => {
       </div>
 
       <!-- Row 2: 订单 + 今日动态 -->
-      <div class="grid-2">
+      <div class="grid-2" v-reveal>
         <!-- 订单状态 -->
         <div class="card">
           <h3 class="card-title">支付订单</h3>
@@ -137,7 +141,7 @@ onMounted(async () => {
       </div>
 
       <!-- Row 3: 套餐分布 + 营销 -->
-      <div class="grid-2">
+      <div class="grid-2" v-reveal>
         <!-- 套餐与订阅 -->
         <div class="card">
           <h3 class="card-title">套餐与订阅</h3>
@@ -146,7 +150,7 @@ onMounted(async () => {
               <div v-for="(count, plan) in overview.planDistribution" :key="plan" class="plan-row">
                 <span class="plan-name">{{ planLabels[plan] || plan }}</span>
                 <div class="plan-track">
-                  <div class="plan-fill" :style="{ width: Math.max(count / overview.totalStores * 100, 4) + '%', background: planColors[plan] || '#1a73e8' }" />
+                  <div class="plan-fill" :style="{ width: Math.max(count / overview.totalStores * 100, 4) + '%', background: planColors[plan] || 'var(--admin-accent)' }" />
                 </div>
                 <span class="plan-num">{{ count }} 家</span>
               </div>
@@ -196,13 +200,13 @@ onMounted(async () => {
   min-height: 200px;
 }
 .err-msg {
-  padding: 48px; text-align: center; color: #dc2626; font-size: 0.95rem;
+  padding: 48px; text-align: center; color: var(--admin-red); font-size: 0.95rem;
 }
 
 /* Hero */
 .hero { margin-bottom: 20px; }
-.hero h1 { font-size: 1.35rem; font-weight: 700; color: var(--admin-text, #1a1d23); margin: 0; }
-.hero p { color: var(--admin-text-secondary, #6b7280); font-size: 0.85rem; margin: 4px 0 0; }
+.hero h1 { font-size: 1.35rem; font-weight: 700; color: var(--admin-text); margin: 0; }
+.hero p { color: var(--admin-text-secondary); font-size: 0.85rem; margin: 4px 0 0; }
 
 /* KPI Row */
 .kpi-row {
@@ -214,77 +218,81 @@ onMounted(async () => {
 .kpi {
   display: flex; align-items: flex-start; gap: 12px;
   padding: 18px 18px;
-  background: var(--admin-surface, #fff);
-  border: 1px solid var(--admin-border, #e2e6ed);
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-border);
   border-radius: 8px;
-  transition: box-shadow 0.15s;
+  transition: box-shadow 0.15s, border-color 0.15s, transform 0.15s;
 }
-.kpi:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
-.kpi--warn { border-left: 3px solid #d97706; }
+.kpi:hover { border-color: var(--admin-accent); box-shadow: 0 8px 22px rgb(15 23 42 / 0.08); transform: translateY(-1px); }
+.kpi--warn { border-left: 3px solid var(--admin-amber); }
 .kpi-icon {
   width: 38px; height: 38px; border-radius: 8px;
   display: flex; align-items: center; justify-content: center;
   font-size: 1rem; font-weight: 800; flex-shrink: 0;
 }
+.kpi-icon--blue { background: var(--admin-accent-light); color: var(--admin-accent); }
+.kpi-icon--purple { background: var(--admin-purple-light); color: var(--admin-purple); }
+.kpi-icon--green { background: var(--admin-green-light); color: var(--admin-green); }
+.kpi-icon--amber { background: var(--admin-amber-light); color: var(--admin-amber); }
 .kpi-body { display: flex; flex-direction: column; min-width: 0; }
-.kpi-label { font-size: 0.73rem; font-weight: 600; color: var(--admin-text-secondary, #6b7280); }
-.kpi-value { font-size: 1.45rem; font-weight: 800; color: var(--admin-text, #1a1d23); line-height: 1.2; margin: 2px 0; }
-.kpi-sub { font-size: 0.7rem; color: var(--admin-text-secondary, #6b7280); }
+.kpi-label { font-size: 0.73rem; font-weight: 600; color: var(--admin-text-secondary); }
+.kpi-value { font-size: 1.45rem; font-weight: 800; color: var(--admin-text); line-height: 1.2; margin: 2px 0; }
+.kpi-sub { font-size: 0.7rem; color: var(--admin-text-secondary); }
 
 /* Grid */
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
 
 /* Card */
 .card {
-  background: var(--admin-surface, #fff);
-  border: 1px solid var(--admin-border, #e2e6ed);
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-border);
   border-radius: 8px; padding: 18px 20px;
 }
-.card-title { margin: 0 0 16px; font-size: 0.88rem; font-weight: 700; color: var(--admin-text, #1a1d23); }
+.card-title { margin: 0 0 16px; font-size: 0.88rem; font-weight: 700; color: var(--admin-text); }
 
 /* Order stats */
 .order-stats { display: flex; gap: 0; }
 .order-stat {
   flex: 1; text-align: center; padding: 14px 8px;
-  border-right: 1px solid #f3f4f6;
+  border-right: 1px solid var(--admin-border);
 }
 .order-stat:last-child { border-right: none; }
 .order-stat strong { display: block; font-size: 1.6rem; font-weight: 800; line-height: 1; }
-.order-stat span { display: block; font-size: 0.74rem; color: var(--admin-text-secondary, #6b7280); margin-top: 4px; }
-.order-stat.paid strong { color: #059669; }
-.order-stat.pending strong { color: #d97706; }
-.order-stat.failed strong { color: #dc2626; }
+.order-stat span { display: block; font-size: 0.74rem; color: var(--admin-text-secondary); margin-top: 4px; }
+.order-stat.paid strong { color: var(--admin-green); }
+.order-stat.pending strong { color: var(--admin-amber); }
+.order-stat.failed strong { color: var(--admin-red); }
 
 /* Today */
 .today-list { display: flex; flex-direction: column; gap: 14px; }
 .today-item { display: flex; align-items: center; gap: 12px; }
 .today-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 2px; }
-.today-dot.green { background: #059669; }
-.today-dot.blue { background: #1a73e8; }
-.today-dot.amber { background: #d97706; }
-.today-item strong { display: block; font-size: 1.05rem; font-weight: 700; color: var(--admin-text, #1a1d23); }
-.today-item span { font-size: 0.76rem; color: var(--admin-text-secondary, #6b7280); }
+.today-dot.green { background: var(--admin-green); }
+.today-dot.blue { background: var(--admin-accent); }
+.today-dot.amber { background: var(--admin-amber); }
+.today-item strong { display: block; font-size: 1.05rem; font-weight: 700; color: var(--admin-text); }
+.today-item span { font-size: 0.76rem; color: var(--admin-text-secondary); }
 
 /* Plan bars */
 .plan-section { display: flex; flex-direction: column; gap: 14px; }
 .plan-bars { display: flex; flex-direction: column; gap: 10px; }
 .plan-row { display: flex; align-items: center; gap: 10px; }
-.plan-name { font-size: 0.82rem; font-weight: 600; color: var(--admin-text, #1a1d23); width: 60px; flex-shrink: 0; }
-.plan-track { flex: 1; height: 8px; border-radius: 4px; background: #e5e7eb; overflow: hidden; }
+.plan-name { font-size: 0.82rem; font-weight: 600; color: var(--admin-text); width: 60px; flex-shrink: 0; }
+.plan-track { flex: 1; height: 8px; border-radius: 4px; background: var(--admin-border); overflow: hidden; }
 .plan-fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; min-width: 2px; }
-.plan-num { font-size: 0.82rem; font-weight: 700; color: var(--admin-text, #1a1d23); min-width: 36px; text-align: right; }
+.plan-num { font-size: 0.82rem; font-weight: 700; color: var(--admin-text); min-width: 36px; text-align: right; }
 .sub-status { display: flex; gap: 8px; flex-wrap: wrap; }
 .sub-tag {
   padding: 3px 10px; border-radius: 4px; font-size: 0.74rem; font-weight: 600;
-  background: #f3f4f6; color: var(--admin-text-secondary, #6b7280);
+  background: var(--admin-accent-light); color: var(--admin-accent);
 }
 
 /* Ops grid */
 .ops-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.ops-item { text-align: center; padding: 12px 8px; background: #f9fafb; border-radius: 8px; }
-.ops-item strong { display: block; font-size: 1.5rem; font-weight: 800; color: var(--admin-text, #1a1d23); }
-.ops-item span { display: block; font-size: 0.78rem; font-weight: 600; color: var(--admin-text-secondary, #6b7280); margin: 2px 0; }
-.ops-item small { display: block; font-size: 0.7rem; color: var(--admin-text-secondary, #6b7280); opacity: 0.7; }
+.ops-item { text-align: center; padding: 12px 8px; background: color-mix(in srgb, var(--admin-accent-light) 38%, var(--admin-surface)); border-radius: 8px; }
+.ops-item strong { display: block; font-size: 1.5rem; font-weight: 800; color: var(--admin-text); }
+.ops-item span { display: block; font-size: 0.78rem; font-weight: 600; color: var(--admin-text-secondary); margin: 2px 0; }
+.ops-item small { display: block; font-size: 0.7rem; color: var(--admin-text-secondary); opacity: 0.7; }
 
 /* Responsive */
 @media (max-width: 1100px) {

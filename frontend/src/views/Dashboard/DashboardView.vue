@@ -4,52 +4,77 @@ import { useRouter } from 'vue-router'
 import { useNotificationStore } from '@/stores/notification'
 import { getDashboard } from '@/api/analytics'
 import type { DashboardData } from '@/types/analytics'
+import StatCard from '@/components/common/StatCard.vue'
+import { revealStagger, tweenWidth, prefersReducedMotion } from '@/utils/motion'
 import VChart from 'vue-echarts'
-import * as echarts from 'echarts'
-echarts.use([])
+import * as echarts from 'echarts/core'
+import { LineChart, PieChart } from 'echarts/charts'
+import { TooltipComponent, GridComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+
+echarts.use([LineChart, PieChart, TooltipComponent, GridComponent, CanvasRenderer])
 
 const router = useRouter()
 const notif = useNotificationStore()
 const data = ref<DashboardData | null>(null)
 const loading = ref(true)
 
-// Okabe-Ito 色盲安全调色板
+// Stripe 风调色板
 const C = {
-  orange:  '#E69F00',
-  sky:     '#56B4E9',
-  green:   '#009E73',
-  yellow:  '#F0E442',
-  blue:    '#0072B2',
-  red:     '#D55E00',
-  pink:    '#CC79A7',
-  ink:     '#374151',
-  muted:   '#9CA3AF',
-  light:   '#F3F4F6',
+  brand:   '#635BFF',
+  brand2:  '#7A73FF',
+  coral:   '#FF7A59',
+  mint:    '#10B981',
+  amber:   '#F59E0B',
+  red:     '#EF4444',
+  ink:     '#1A1F36',
+  muted:   '#8792A2',
+  light:   '#F6F9FC',
 }
+
+const metricsRoot = ref<HTMLElement | null>(null)
 
 onMounted(async () => {
   try {
-    const { data: res } = await getDashboard()
+    const { data: res } = await getDashboard({ silentError: true })
     data.value = res
   } catch { /* */ }
-  finally { loading.value = false }
+  finally {
+    loading.value = false
+    // 指标区进场 + 风险条填充在下一帧触发（DOM 就绪后）
+    requestAnimationFrame(() => {
+      if (metricsRoot.value) {
+        revealStagger(Array.from(metricsRoot.value.children) as HTMLElement[])
+      }
+      document.querySelectorAll<HTMLElement>('.risk-bar-fill').forEach((el, i) => {
+        const pct = Number(el.dataset.pct || 0)
+        tweenWidth(el, pct, { delay: 0.3 + i * 0.08 })
+      })
+    })
+  }
 })
 
-// 趋势图
+// 到店趋势用于迷你 sparkline
+const trendSpark = computed(() => data.value?.visitTrend?.map((p) => p.count) || [])
+
+// 趋势面积图，带绘制动画
 const trendOption = computed(() => ({
+  animationDuration: prefersReducedMotion() ? 0 : 1100,
+  animationEasing: 'cubicOut' as const,
   tooltip: {
     trigger: 'axis' as const,
     backgroundColor: '#fff',
-    borderColor: '#E5E7EB',
+    borderColor: '#E6E9F0',
     textStyle: { color: C.ink, fontSize: 13 },
     formatter: (params: any) => {
       const p = params[0]
-      return `<b>${p.axisValue}</b><br/>到店 <b style="color:${C.blue}">${p.value}</b> 人次`
+      return `<b>${p.axisValue}</b><br/>到店 <b style="color:${C.brand}">${p.value}</b> 人次`
     },
   },
-  grid: { left: 16, right: 16, top: 12, bottom: 8 },
+  grid: { left: 16, right: 16, top: 16, bottom: 8, containLabel: true },
   xAxis: {
     type: 'category' as const,
+    boundaryGap: false,
     data: data.value?.visitTrend?.map((p) => p.date.slice(5)) || [],
     axisLine: { show: false },
     axisTick: { show: false },
@@ -58,7 +83,7 @@ const trendOption = computed(() => ({
   yAxis: {
     type: 'value' as const,
     minInterval: 1,
-    splitLine: { lineStyle: { color: '#F3F4F6', type: 'dashed' } },
+    splitLine: { lineStyle: { color: '#EEF1F6', type: 'dashed' as const } },
     axisLabel: { color: C.muted, fontSize: 12 },
   },
   series: [{
@@ -66,15 +91,16 @@ const trendOption = computed(() => ({
     type: 'line',
     smooth: true,
     symbol: 'circle',
-    symbolSize: 6,
-    lineStyle: { color: C.blue, width: 2.5 },
-    itemStyle: { color: C.blue },
+    symbolSize: 7,
+    showSymbol: false,
+    lineStyle: { color: C.brand, width: 3 },
+    itemStyle: { color: C.brand, borderColor: '#fff', borderWidth: 2 },
     areaStyle: {
       color: {
-        type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+        type: 'linear' as const, x: 0, y: 0, x2: 0, y2: 1,
         colorStops: [
-          { offset: 0, color: 'rgba(0,114,178,0.12)' },
-          { offset: 1, color: 'rgba(0,114,178,0.01)' },
+          { offset: 0, color: 'rgba(99,91,255,0.20)' },
+          { offset: 1, color: 'rgba(99,91,255,0.01)' },
         ],
       },
     },
@@ -86,20 +112,20 @@ const churnPieOption = computed(() => {
   const d = data.value?.churnDistribution
   if (!d) return {}
   return {
-    tooltip: { trigger: 'item' as const, backgroundColor: '#fff', borderColor: '#E5E7EB', textStyle: { color: C.ink } },
-    legend: { show: false },
+    animationDuration: prefersReducedMotion() ? 0 : 900,
+    tooltip: { trigger: 'item' as const, backgroundColor: '#fff', borderColor: '#E6E9F0', textStyle: { color: C.ink } },
     series: [{
       type: 'pie',
-      radius: ['55%', '80%'],
+      radius: ['58%', '82%'],
       center: ['50%', '50%'],
       avoidLabelOverlap: false,
-      itemStyle: { borderRadius: 2, borderColor: '#fff', borderWidth: 3 },
+      itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 3 },
       label: { show: false },
-      emphasis: { scale: false, label: { show: true, fontSize: 16, fontWeight: 'bold' } },
+      emphasis: { scale: true, scaleSize: 4, label: { show: true, fontSize: 15, fontWeight: 'bold' } },
       data: [
         { value: d.high, name: '高风险', itemStyle: { color: C.red } },
-        { value: d.medium, name: '中风险', itemStyle: { color: C.orange } },
-        { value: d.low, name: '低风险', itemStyle: { color: C.green } },
+        { value: d.medium, name: '中风险', itemStyle: { color: C.amber } },
+        { value: d.low, name: '低风险', itemStyle: { color: C.mint } },
       ],
     }],
   }
@@ -110,12 +136,17 @@ function riskLevel(score: number) {
   if (score >= 30) return 'medium'
   return 'low'
 }
+
+const churnTotal = computed(() => {
+  const d = data.value?.churnDistribution
+  return d ? d.high + d.medium + d.low : 0
+})
 </script>
 
 <template>
   <div class="dashboard-shell">
     <header class="dashboard-hero">
-      <div>
+      <div class="hero-copy">
         <span class="hero-kicker">经营总览</span>
         <h1>快速看见今天的客户状态。</h1>
         <p>把客户数量、流失风险、到店趋势和高价值客户放在同一个视图里，减少切换成本。</p>
@@ -124,7 +155,7 @@ function riskLevel(score: number) {
       <el-popover placement="bottom-end" :width="320" trigger="click">
         <template #reference>
           <el-badge :value="notif.unreadCount" :hidden="notif.unreadCount === 0">
-            <el-button class="notice-btn" circle>🔔</el-button>
+            <button class="notice-btn" type="button">🔔</button>
           </el-badge>
         </template>
         <p v-if="!notif.messages.length" class="notice-empty">暂无通知</p>
@@ -140,27 +171,34 @@ function riskLevel(score: number) {
 
     <el-skeleton :loading="loading" animated :count="4">
       <template v-if="data">
-        <section class="metric-grid">
-          <article class="metric-card">
-            <span class="metric-label">总客户</span>
-            <strong class="metric-value">{{ data.totalCustomers }}</strong>
-            <span class="metric-note">当前在库客户总量</span>
-          </article>
-          <article class="metric-card metric-card--danger">
-            <span class="metric-label">高风险</span>
-            <strong class="metric-value">{{ data.highRiskCount }}</strong>
-            <span class="metric-note">需要优先跟进</span>
-          </article>
-          <article class="metric-card metric-card--success">
-            <span class="metric-label">高价值</span>
-            <strong class="metric-value">{{ data.highValueCount }}</strong>
-            <span class="metric-note">值得做复购与转介绍</span>
-          </article>
-          <article class="metric-card metric-card--accent">
-            <span class="metric-label">今日到店</span>
-            <strong class="metric-value">{{ data.todayVisits }}</strong>
-            <span class="metric-note">今天新增到店次数</span>
-          </article>
+        <section ref="metricsRoot" class="metric-grid">
+          <StatCard
+            label="总客户"
+            :value="data.totalCustomers"
+            note="当前在库客户总量"
+            tone="accent"
+            :spark="trendSpark"
+          />
+          <StatCard
+            label="高风险"
+            :value="data.highRiskCount"
+            note="需要优先跟进"
+            tone="danger"
+            clickable
+            @click="router.push('/customers?risk=high')"
+          />
+          <StatCard
+            label="高价值"
+            :value="data.highValueCount"
+            note="值得做复购与转介绍"
+            tone="success"
+          />
+          <StatCard
+            label="今日到店"
+            :value="data.todayVisits"
+            note="今天新增到店次数"
+            tone="warning"
+          />
         </section>
 
         <section class="content-grid">
@@ -170,7 +208,9 @@ function riskLevel(score: number) {
                 <h3>到店趋势</h3>
                 <p>近 7 天到店人次</p>
               </div>
-              <span class="panel-chip">{{ (data.visitTrend || []).reduce((s: number, p: any) => s + p.count, 0) }} 人次</span>
+              <span class="panel-chip">
+                {{ (data.visitTrend || []).reduce((s: number, p: any) => s + p.count, 0) }} 人次
+              </span>
             </div>
             <v-chart v-if="data.visitTrend?.length" :option="trendOption" class="chart chart--line" autoresize />
             <div v-else class="panel-empty">暂无到店数据</div>
@@ -183,7 +223,14 @@ function riskLevel(score: number) {
                 <p>最近一次评分分布</p>
               </div>
             </div>
-            <v-chart v-if="data.churnDistribution" :option="churnPieOption" class="chart chart--pie" autoresize />
+            <div v-if="churnTotal" class="pie-wrap">
+              <v-chart :option="churnPieOption" class="chart chart--pie" autoresize />
+              <div class="pie-center">
+                <strong>{{ churnTotal }}</strong>
+                <span>已评分</span>
+              </div>
+            </div>
+            <div v-else class="panel-empty">暂无评分数据</div>
           </article>
 
           <article class="panel panel--list">
@@ -209,7 +256,12 @@ function riskLevel(score: number) {
               </div>
               <div class="risk-score-wrap">
                 <div class="risk-bar-bg">
-                  <div class="risk-bar-fill" :class="`risk-${riskLevel(c.churnScore)}`" :style="{ width: `${c.churnScore}%` }" />
+                  <div
+                    class="risk-bar-fill"
+                    :class="`risk-${riskLevel(c.churnScore)}`"
+                    :data-pct="c.churnScore"
+                    style="width:0%"
+                  />
                 </div>
                 <span class="risk-val" :class="`text-${riskLevel(c.churnScore)}`">{{ c.churnScore }}</span>
               </div>
@@ -225,156 +277,89 @@ function riskLevel(score: number) {
 .dashboard-shell {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 20px;
 }
 
 .dashboard-hero {
+  position: relative;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 24px 24px 0;
+  padding: 28px 26px 26px;
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(99, 91, 255, 0.10), transparent 60%),
+    radial-gradient(120% 140% at 100% 0%, rgba(255, 122, 89, 0.08), transparent 55%),
+    var(--surface);
+  border: 1px solid var(--border);
+  overflow: hidden;
 }
 
+.hero-copy { min-width: 0; }
+
 .hero-kicker {
-  color: #0072b2;
+  color: var(--accent);
   font-size: 0.78rem;
   font-weight: 800;
+  letter-spacing: 0.02em;
 }
 
 .dashboard-hero h1 {
   margin: 8px 0 0;
-  font-size: 1.5rem;
+  font-size: 1.55rem;
   line-height: 1.2;
+  color: var(--ink);
 }
 
 .dashboard-hero p {
   max-width: 620px;
   margin: 10px 0 0;
-  color: #6b7280;
+  color: var(--ink-muted);
 }
 
 .notice-btn {
-  width: 40px;
-  height: 40px;
-  border: 1px solid #dbe3ec;
-  background: #fff;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  font-size: 1.05rem;
+  flex-shrink: 0;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
+.notice-btn:hover { box-shadow: var(--shadow-md); border-color: var(--accent-light); }
 
-.notice-empty {
-  padding: 12px;
-  color: #9ca3af;
-}
-
-.notice-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.notice-item {
-  padding: 8px 0;
-  border-bottom: 1px solid #f1f5f9;
-}
-
+.notice-empty { padding: 12px; color: var(--ink-muted); }
+.notice-list { display: flex; flex-direction: column; gap: 8px; }
+.notice-item { padding: 8px 0; border-bottom: 1px solid var(--border); }
 .notice-tag {
-  display: inline-flex;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: #eef2f7;
-  color: #334155;
-  font-size: 0.78rem;
+  display: inline-flex; padding: 3px 8px; border-radius: 999px;
+  background: var(--bg); color: var(--ink); font-size: 0.78rem;
 }
-
-.notice-tag--danger {
-  background: #fef2f2;
-  color: #b42318;
-}
-
-.notice-read {
-  width: 100%;
-  margin-top: 8px;
-}
+.notice-tag--danger { background: var(--danger-light); color: var(--danger); }
+.notice-read { width: 100%; margin-top: 8px; }
 
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
-  padding: 0 24px;
-}
-
-.metric-card {
-  min-height: 132px;
-  padding: 20px;
-  border: 1px solid #e3e8ef;
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
-}
-
-.metric-card--danger { border-top: 3px solid #d55e00; }
-.metric-card--success { border-top: 3px solid #009e73; }
-.metric-card--accent { border-top: 3px solid #0072b2; }
-
-.metric-label {
-  color: #6b7280;
-  font-size: 0.82rem;
-  font-weight: 700;
-}
-
-.metric-value {
-  display: block;
-  margin-top: 8px;
-  color: #111827;
-  font-size: 2rem;
-  line-height: 1;
-}
-
-.metric-note {
-  display: block;
-  margin-top: 10px;
-  color: #9ca3af;
-  font-size: 0.8rem;
 }
 
 .content-grid {
   display: grid;
   grid-template-columns: 1.8fr 1fr 1.1fr;
   gap: 16px;
-  padding: 0 24px 24px;
-}
-
-@media (max-width: 1180px) {
-  .metric-grid,
-  .content-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .panel--wide,
-  .panel--list {
-    grid-column: span 2;
-  }
-}
-
-@media (max-width: 720px) {
-  .metric-grid,
-  .content-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .panel--wide,
-  .panel--list {
-    grid-column: span 1;
-  }
 }
 
 .panel {
-  min-height: 320px;
-  padding: 20px;
-  border: 1px solid #e3e8ef;
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+  min-height: 340px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
 }
 
 .panel-head {
@@ -382,149 +367,89 @@ function riskLevel(score: number) {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 10px;
+  margin-bottom: 14px;
 }
-
-.panel-head h3 {
-  margin: 0;
-  color: #111827;
-  font-size: 0.98rem;
-}
-
-.panel-head p {
-  margin: 4px 0 0;
-  color: #9ca3af;
-  font-size: 0.8rem;
-}
+.panel-head h3 { margin: 0; color: var(--ink); font-size: 1rem; }
+.panel-head p { margin: 4px 0 0; color: var(--ink-muted); font-size: 0.8rem; }
 
 .panel-chip {
   flex-shrink: 0;
-  padding: 4px 10px;
+  padding: 4px 12px;
   border-radius: 999px;
-  background: #eef2f7;
-  color: #334155;
+  background: var(--accent-light);
+  color: var(--accent-hover);
   font-size: 0.78rem;
   font-weight: 700;
 }
 
-.panel-link {
-  color: #0072b2;
-  font-size: 0.82rem;
-  text-decoration: none;
-}
-
-.panel-link:hover {
-  text-decoration: underline;
-}
+.panel-link { color: var(--accent); font-size: 0.82rem; text-decoration: none; }
+.panel-link:hover { text-decoration: underline; }
 
 .panel-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 220px;
-  color: #9ca3af;
-  font-size: 0.9rem;
+  display: flex; align-items: center; justify-content: center;
+  min-height: 240px; color: var(--ink-muted); font-size: 0.9rem;
 }
 
-.chart {
-  width: 100%;
-}
+.chart { width: 100%; }
+.chart--line { height: 288px; }
+.chart--pie { height: 260px; }
 
-.chart--line {
-  height: 280px;
+.pie-wrap { position: relative; }
+.pie-center {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  pointer-events: none;
 }
-
-.chart--pie {
-  height: 280px;
-}
+.pie-center strong { font-size: 1.8rem; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
+.pie-center span { font-size: 0.78rem; color: var(--ink-muted); margin-top: 2px; }
 
 .risk-row {
   width: 100%;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 0;
+  padding: 12px 8px;
   border: 0;
-  border-top: 1px solid #f1f5f9;
+  border-radius: var(--radius-sm);
   background: transparent;
   cursor: pointer;
   text-align: left;
+  transition: background 0.15s ease;
 }
-
-.risk-row:first-of-type {
-  border-top: 0;
-}
-
-.risk-row:hover {
-  background: #f8fafc;
-}
+.risk-row:hover { background: var(--bg); }
 
 .risk-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: 0.85rem;
-  font-weight: 700;
-  flex-shrink: 0;
+  width: 38px; height: 38px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 0.9rem; font-weight: 700; flex-shrink: 0;
+}
+.risk-avatar.risk-high { background: var(--risk-high); }
+.risk-avatar.risk-medium { background: var(--risk-medium); }
+.risk-avatar.risk-low { background: var(--risk-low); }
+
+.risk-body { flex: 1; min-width: 0; }
+.risk-name { color: var(--ink); font-size: 0.9rem; font-weight: 700; }
+.risk-phone { color: var(--ink-muted); font-size: 0.78rem; }
+
+.risk-score-wrap { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.risk-bar-bg { width: 62px; height: 6px; border-radius: 999px; background: var(--bg); overflow: hidden; }
+.risk-bar-fill { height: 100%; border-radius: 999px; }
+.risk-bar-fill.risk-high { background: var(--risk-high); }
+.risk-bar-fill.risk-medium { background: var(--risk-medium); }
+.risk-bar-fill.risk-low { background: var(--risk-low); }
+
+.risk-val { width: 28px; font-size: 0.85rem; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.text-high { color: var(--risk-high); }
+.text-medium { color: var(--risk-medium); }
+.text-low { color: var(--risk-low); }
+
+@media (max-width: 1180px) {
+  .metric-grid, .content-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .panel--wide, .panel--list { grid-column: span 2; }
 }
 
-.risk-avatar.risk-high { background: #d55e00; }
-.risk-avatar.risk-medium { background: #e69f00; }
-.risk-avatar.risk-low { background: #009e73; }
-
-.risk-body {
-  flex: 1;
-  min-width: 0;
+@media (max-width: 720px) {
+  .metric-grid, .content-grid { grid-template-columns: 1fr; }
+  .panel--wide, .panel--list { grid-column: span 1; }
 }
-
-.risk-name {
-  color: #111827;
-  font-size: 0.9rem;
-  font-weight: 700;
-}
-
-.risk-phone {
-  color: #9ca3af;
-  font-size: 0.78rem;
-}
-
-.risk-score-wrap {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.risk-bar-bg {
-  width: 62px;
-  height: 6px;
-  border-radius: 999px;
-  background: #eef2f7;
-  overflow: hidden;
-}
-
-.risk-bar-fill {
-  height: 100%;
-  border-radius: 999px;
-}
-
-.risk-bar-fill.risk-high { background: #d55e00; }
-.risk-bar-fill.risk-medium { background: #e69f00; }
-.risk-bar-fill.risk-low { background: #009e73; }
-
-.risk-val {
-  width: 28px;
-  color: #111827;
-  font-size: 0.85rem;
-  font-weight: 700;
-  text-align: right;
-}
-
-.text-high { color: #d55e00; }
-.text-medium { color: #e69f00; }
-.text-low { color: #009e73; }
 </style>
