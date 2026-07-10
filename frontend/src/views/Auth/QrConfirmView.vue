@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { qrConfirm, qrStatus } from '@/api/auth'
+import { getApiErrorMessage } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
@@ -46,9 +47,9 @@ async function handleConfirm() {
     await qrConfirm(qrId)
     status.value = 'success'
     ElMessage.success('已确认登录，请查看电脑屏幕')
-  } catch (e: any) {
+  } catch (e) {
     status.value = 'failed'
-    ElMessage.error(e?.response?.data?.detail || '确认失败，请重新扫码')
+    ElMessage.error(getApiErrorMessage(e, '确认失败，请重新扫码'))
   }
 }
 
