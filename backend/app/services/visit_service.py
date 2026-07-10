@@ -55,6 +55,9 @@ async def create_visit(
     await db.commit()
     await db.refresh(visit)
 
+    from app.utils.cache import delete as cache_delete
+    await cache_delete(f"customer_detail:{customer_id}")
+
     logger.info(
         f"到店记录已创建: customer={customer_id}, "
         f"service={visit.service_type}, amount={visit.amount}"

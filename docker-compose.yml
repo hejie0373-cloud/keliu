@@ -89,6 +89,7 @@ services:
       - DB_URL=${DOCKER_DB_URL:?Set DOCKER_DB_URL in .env}
       - REDIS_URL=redis://redis:6379/0
       - ES_URL=http://elasticsearch:9200
+      - DIFY_API_URL=${DOCKER_DIFY_API_URL:-http://host.docker.internal:5001}
     depends_on:
       mysql:
         condition: service_healthy
@@ -116,6 +117,7 @@ services:
       - DB_URL=${DOCKER_DB_URL:?Set DOCKER_DB_URL in .env}
       - REDIS_URL=redis://redis:6379/0
       - ES_URL=http://elasticsearch:9200
+      - DIFY_API_URL=${DOCKER_DIFY_API_URL:-http://host.docker.internal:5001}
     depends_on:
       backend:
         condition: service_started
@@ -138,6 +140,7 @@ services:
       - DB_URL=${DOCKER_DB_URL:?Set DOCKER_DB_URL in .env}
       - REDIS_URL=redis://redis:6379/0
       - ES_URL=http://elasticsearch:9200
+      - DIFY_API_URL=${DOCKER_DIFY_API_URL:-http://host.docker.internal:5001}
     depends_on:
       backend:
         condition: service_started

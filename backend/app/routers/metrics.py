@@ -66,7 +66,7 @@ async def trigger_churn_score(
 
     结果写入 ai_metrics 表，高风险自动发布预警
     """
-    result = await calculate_churn_score(customer_id, db)
+    result = await calculate_churn_score(customer_id, db, force_refresh=True)
     return result
 
 

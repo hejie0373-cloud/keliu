@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Optional, List, Tuple
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, func, desc, and_
+from sqlalchemy import select, func, desc, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -46,10 +46,14 @@ async def _get_target_customers(
     优先级：target_customer_ids > target_risk_level
     """
     if target_customer_ids:
-        # 指定客户 ID 列表
+        # 指定客户：兼容客户 ID、姓名、手机号，方便手工创建活动时直接输入姓名。
         result = await db.execute(
             select(Customer).where(
-                Customer.id.in_(target_customer_ids),
+                or_(
+                    Customer.id.in_(target_customer_ids),
+                    Customer.name.in_(target_customer_ids),
+                    Customer.phone.in_(target_customer_ids),
+                ),
                 Customer.store_id == store_id,
                 Customer.is_deleted == False,  # noqa: E712
             )

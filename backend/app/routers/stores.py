@@ -90,7 +90,18 @@ async def create_store(
     role_result = await db.execute(select(Role).where(Role.name == "store_owner"))
     role = role_result.scalar_one_or_none()
     if role:
-        db.add(UserRole(user_id=current_user.id, role_id=role.id, store_id=store.id))
+        existing_role_result = await db.execute(
+            select(UserRole).where(
+                UserRole.user_id == current_user.id,
+                UserRole.role_id == role.id,
+                UserRole.store_id.is_(None),
+            )
+        )
+        existing_role = existing_role_result.scalar_one_or_none()
+        if existing_role:
+            existing_role.store_id = store.id
+        else:
+            db.add(UserRole(user_id=current_user.id, role_id=role.id, store_id=store.id))
 
     db.add(Subscription(store_id=store.id, plan_name="free", status="active"))
     await db.commit()

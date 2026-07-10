@@ -30,6 +30,7 @@ from app.services.customer_service import (
 from app.services.visit_service import create_visit, get_visit_list
 from app.services.import_service import create_import_task, get_progress, process_csv_import
 from app.db.session import get_session_factory
+from app.utils.import_paths import get_import_upload_dir
 
 router = APIRouter()
 
@@ -225,29 +226,29 @@ async def import_csv_endpoint(
     # 创建任务
     task_id = await create_import_task()
 
-    # 保存到 backend 容器与 Celery worker 共享的挂载目录。
-    upload_dir = "/app/tmp/imports"
+    # 保存到 API 和 worker 都能访问的临时目录。
+    from app.core.config import settings
+    upload_dir = get_import_upload_dir(settings)
     os.makedirs(upload_dir, exist_ok=True)
-    tmp_path = f"{upload_dir}/{task_id}.csv"
+    tmp_path = upload_dir / f"{task_id}.csv"
     with open(tmp_path, "wb") as tmp:
         content = await file.read()
         tmp.write(content)
 
     # 异步处理（开发阶段直接同步执行，生产环境用 Celery）
-    from app.core.config import settings
     if settings.ENVIRONMENT == "development":
         import asyncio
         asyncio.create_task(
             process_csv_import(
                 task_id=task_id,
-                file_path=tmp_path,
+                file_path=str(tmp_path),
                 store_id=store_id,
                 db_session_factory=get_session_factory,
             )
         )
     else:
         from app.tasks.import_task import process_csv
-        process_csv.delay(task_id=task_id, file_path=tmp_path, store_id=store_id)
+        process_csv.delay(task_id=task_id, file_path=str(tmp_path), store_id=store_id)
 
     return {"task_id": task_id, "message": "导入任务已创建"}
 

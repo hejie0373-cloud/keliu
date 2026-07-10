@@ -17,7 +17,7 @@ class CampaignCreate(BaseModel):
     template: str  # 消息模板，支持 {{客户姓名}} 等标签
     channels: List[Literal["sms", "email", "wechat"]]
     scheduled_at: Optional[datetime] = None  # None=立即发送
-    target_customer_ids: Optional[List[str]] = None  # 指定客户
+    target_customer_ids: Optional[List[str]] = None  # 指定客户：支持客户 ID、姓名、手机号
     target_risk_level: Optional[Literal["high", "all"]] = None  # 按风险筛选
 
     @field_validator("name")
