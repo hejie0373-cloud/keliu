@@ -7,6 +7,7 @@ import http from '@/api/http'
 import type { CustomerListItem, ImportProgress } from '@/types/customer'
 import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
+import StatCard from '@/components/common/StatCard.vue'
 
 const router = useRouter()
 
@@ -163,26 +164,10 @@ function closeImport() {
     </header>
 
     <section class="summary-grid">
-      <article class="summary-card">
-        <span>当前筛选</span>
-        <strong>{{ activeRiskName }}</strong>
-        <small>{{ total }} 位客户</small>
-      </article>
-      <article class="summary-card summary-card--danger">
-        <span>本页高风险</span>
-        <strong>{{ visibleHighRisk }}</strong>
-        <small>建议优先跟进</small>
-      </article>
-      <article class="summary-card summary-card--success">
-        <span>本页到店</span>
-        <strong>{{ visibleVisits }}</strong>
-        <small>累计到店次数</small>
-      </article>
-      <article class="summary-card summary-card--muted">
-        <span>待评分</span>
-        <strong>{{ visibleUnscored }}</strong>
-        <small>可使用一键分析</small>
-      </article>
+      <StatCard label="当前筛选" :value="total" :note="`${activeRiskName} · 位客户`" tone="accent" :delay="0" />
+      <StatCard label="本页高风险" :value="visibleHighRisk" note="建议优先跟进" tone="danger" :delay="0.06" />
+      <StatCard label="本页到店" :value="visibleVisits" note="累计到店次数" tone="success" :delay="0.12" />
+      <StatCard label="待评分" :value="visibleUnscored" note="可使用一键分析" tone="neutral" :delay="0.18" />
     </section>
 
     <section class="customer-panel">
@@ -338,14 +323,14 @@ function closeImport() {
 }
 
 .hero-kicker {
-  color: #0072b2;
+  color: var(--accent);
   font-size: 0.78rem;
   font-weight: 800;
 }
 
 .customer-hero h1 {
   margin: 8px 0 0;
-  color: #111827;
+  color: var(--ink);
   font-size: 1.5rem;
   line-height: 1.2;
 }
@@ -353,7 +338,7 @@ function closeImport() {
 .customer-hero p {
   max-width: 650px;
   margin: 10px 0 0;
-  color: #6b7280;
+  color: var(--ink-muted);
 }
 
 .hero-actions {
@@ -370,45 +355,9 @@ function closeImport() {
   padding: 0 24px;
 }
 
-.summary-card {
-  min-height: 116px;
-  padding: 18px;
-  border: 1px solid #e3e8ef;
-  border-top: 3px solid #0072b2;
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
-}
-
-.summary-card--danger { border-top-color: #d55e00; }
-.summary-card--success { border-top-color: #009e73; }
-.summary-card--muted { border-top-color: #6b7280; }
-
-.summary-card span,
-.summary-card small {
-  display: block;
-  color: #6b7280;
-  font-size: 0.82rem;
-  font-weight: 700;
-}
-
-.summary-card strong {
-  display: block;
-  margin: 8px 0 8px;
-  color: #111827;
-  font-size: 1.85rem;
-  line-height: 1;
-}
-
-.summary-card small {
-  color: #9ca3af;
-  font-size: 0.78rem;
-  font-weight: 500;
-}
-
 .customer-panel {
   margin: 0 24px 24px;
-  border: 1px solid #e3e8ef;
+  border: 1px solid var(--border);
   border-radius: 8px;
   background: #fff;
   overflow: hidden;
@@ -421,7 +370,7 @@ function closeImport() {
   justify-content: space-between;
   gap: 16px;
   padding: 16px;
-  border-bottom: 1px solid #eef2f7;
+  border-bottom: 1px solid var(--border);
 }
 
 .search-input {
@@ -433,9 +382,9 @@ function closeImport() {
   flex-wrap: wrap;
   gap: 6px;
   padding: 4px;
-  border: 1px solid #e3e8ef;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #f8fafc;
+  background: var(--bg);
 }
 
 .risk-tab {
@@ -444,7 +393,7 @@ function closeImport() {
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: #6b7280;
+  color: var(--ink-muted);
   cursor: pointer;
   font-size: 0.86rem;
   font-weight: 700;
@@ -452,13 +401,13 @@ function closeImport() {
 
 .risk-tab.active {
   background: #fff;
-  color: #111827;
+  color: var(--ink);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
-.risk-tab--danger.active { color: #d55e00; }
-.risk-tab--warning.active { color: #b7791f; }
-.risk-tab--success.active { color: #009e73; }
+.risk-tab--danger.active { color: var(--danger); }
+.risk-tab--warning.active { color: var(--warning); }
+.risk-tab--success.active { color: var(--success); }
 
 .customer-table {
   width: 100%;
@@ -476,7 +425,7 @@ function closeImport() {
 }
 
 .customer-cell:hover strong {
-  color: #0072b2;
+  color: var(--accent);
 }
 
 .avatar {
@@ -487,8 +436,8 @@ function closeImport() {
   justify-content: center;
   flex-shrink: 0;
   border-radius: 50%;
-  background: #e6f2f8;
-  color: #0072b2;
+  background: var(--accent-light);
+  color: var(--accent);
   font-weight: 800;
 }
 
@@ -498,23 +447,23 @@ function closeImport() {
 }
 
 .customer-cell strong {
-  color: #111827;
+  color: var(--ink);
   font-size: 0.92rem;
 }
 
 .customer-cell small,
 .muted-text {
-  color: #9ca3af;
+  color: var(--ink-subtle);
   font-size: 0.82rem;
 }
 
 .number-text {
-  color: #111827;
+  color: var(--ink);
   font-weight: 700;
 }
 
 .unscored {
-  color: #9ca3af;
+  color: var(--ink-subtle);
   font-size: 0.82rem;
 }
 
@@ -522,7 +471,7 @@ function closeImport() {
   display: flex;
   justify-content: center;
   padding: 16px;
-  border-top: 1px solid #eef2f7;
+  border-top: 1px solid var(--border);
 }
 
 @media (max-width: 980px) {

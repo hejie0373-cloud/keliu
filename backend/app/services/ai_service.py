@@ -116,7 +116,7 @@ async def _get_visit_stats(
 
 
 async def calculate_churn_score(
-    customer_id: str, db: AsyncSession
+    customer_id: str, db: AsyncSession, force_refresh: bool = False
 ) -> ChurnScoreResponse:
     """
     计算客户流失风险评分（Dify AI 优先 → 规则引擎兜底）
@@ -125,7 +125,7 @@ async def calculate_churn_score(
     # 缓存：1 小时内算过直接返回
     from app.utils.cache import get as cache_get, set as cache_set, TTL_LONG
     cache_key = f"churn:{customer_id}"
-    cached = await cache_get(cache_key)
+    cached = await cache_get(cache_key) if not force_refresh else None
     if cached:
         logger.info(f"评分缓存命中: customer={customer_id}")
         return ChurnScoreResponse(**cached)

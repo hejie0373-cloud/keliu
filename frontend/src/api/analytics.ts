@@ -1,8 +1,8 @@
 import http from './http'
 import type { DashboardData } from '@/types/analytics'
 
-export const getDashboard = () =>
-  http.get<DashboardData>('/analytics/dashboard')
+export const getDashboard = (options?: { silentError?: boolean }) =>
+  http.get<DashboardData>('/analytics/dashboard', options)
 
 export const getReport = (params: {
   type: string

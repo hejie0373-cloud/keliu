@@ -1,156 +1,154 @@
-"""
-认证模块 Pydantic Schema — 请求/响应模型
-"""
+"""Authentication request and response schemas."""
 import re
 from datetime import datetime
-from typing import Optional, List
+from typing import List, Optional
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
+
+OTP_PURPOSES = {"login", "register", "reset_password", "bind_identity", "change_phone"}
 
 
-# ============================================================
-# 请求模型
-# ============================================================
+def _validate_phone(value: Optional[str]) -> Optional[str]:
+    if value is not None and not re.match(r"^1[3-9]\d{9}$", value):
+        raise ValueError("phone format is invalid")
+    return value
 
-class SendCodeRequest(BaseModel):
-    """发送短信验证码"""
-    phone: str
+
+def _validate_code(value: str) -> str:
+    if not re.match(r"^\d{6}$", value):
+        raise ValueError("code must be 6 digits")
+    return value
+
+
+class _IdentityRequest(BaseModel):
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    account: Optional[str] = None
+
+    @property
+    def identity_account(self) -> str:
+        return self.account or self.phone or self.email or ""
 
     @field_validator("phone")
     @classmethod
-    def validate_phone(cls, v: str) -> str:
-        if not re.match(r"^1[3-9]\d{9}$", v):
-            raise ValueError("手机号格式不正确")
-        return v
+    def validate_phone(cls, value: Optional[str]) -> Optional[str]:
+        return _validate_phone(value)
+
+    @model_validator(mode="after")
+    def validate_identity(self):
+        if not self.identity_account:
+            raise ValueError("account is required")
+        return self
 
 
-class LoginByPhoneRequest(BaseModel):
-    """手机号 + 验证码登录"""
-    phone: str
+class SendCodeRequest(_IdentityRequest):
+    purpose: str = "login"
+
+    @field_validator("purpose")
+    @classmethod
+    def validate_purpose(cls, value: str) -> str:
+        if value not in OTP_PURPOSES:
+            raise ValueError("purpose is invalid")
+        return value
+
+
+class LoginByPhoneRequest(_IdentityRequest):
     code: str
-
-    @field_validator("phone")
-    @classmethod
-    def validate_phone(cls, v: str) -> str:
-        if not re.match(r"^1[3-9]\d{9}$", v):
-            raise ValueError("手机号格式不正确")
-        return v
 
     @field_validator("code")
     @classmethod
-    def validate_code(cls, v: str) -> str:
-        if not re.match(r"^\d{6}$", v):
-            raise ValueError("验证码为 6 位数字")
-        return v
+    def validate_code(cls, value: str) -> str:
+        return _validate_code(value)
 
 
-class LoginByPasswordRequest(BaseModel):
-    """手机号 + 密码登录"""
-    phone: str
+class LoginByPasswordRequest(_IdentityRequest):
     password: str
 
-    @field_validator("phone")
-    @classmethod
-    def validate_phone(cls, v: str) -> str:
-        if not re.match(r"^1[3-9]\d{9}$", v):
-            raise ValueError("手机号格式不正确")
-        return v
 
-
-class RegisterByPhoneRequest(BaseModel):
-    """手机号 + 验证码 + 密码注册"""
-    phone: str
+class RegisterByPhoneRequest(_IdentityRequest):
     code: str
     password: str
 
-    @field_validator("phone")
-    @classmethod
-    def validate_phone(cls, v: str) -> str:
-        if not re.match(r"^1[3-9]\d{9}$", v):
-            raise ValueError("手机号格式不正确")
-        return v
-
     @field_validator("code")
     @classmethod
-    def validate_code(cls, v: str) -> str:
-        if not re.match(r"^\d{6}$", v):
-            raise ValueError("验证码为 6 位数字")
-        return v
+    def validate_code(cls, value: str) -> str:
+        return _validate_code(value)
 
     @field_validator("password")
     @classmethod
-    def validate_password(cls, v: str) -> str:
-        if len(v) < 8 or len(v) > 50:
-            raise ValueError("密码长度需在 8-50 位之间")
-        return v
+    def validate_password(cls, value: str) -> str:
+        if len(value) < 8 or len(value) > 50:
+            raise ValueError("password length must be between 8 and 50")
+        return value
+
+
+class RegisterByPasswordRequest(_IdentityRequest):
+    password: str
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        if len(value) < 8 or len(value) > 50:
+            raise ValueError("password length must be between 8 and 50")
+        return value
 
 
 class RefreshTokenRequest(BaseModel):
-    """刷新 access_token"""
     refresh_token: str
 
 
+class LoginTicketRequest(BaseModel):
+    login_ticket: str
+
+
 class LogoutRequest(BaseModel):
-    """退出登录（加入黑名单）"""
     refresh_token: str
 
 
 class UpdateProfileRequest(BaseModel):
-    """更新个人信息"""
     name: Optional[str] = None
     avatar_url: Optional[str] = None
 
 
 class ChangePasswordRequest(BaseModel):
-    """修改密码"""
     old_password: str
     new_password: str
 
     @field_validator("new_password")
     @classmethod
-    def validate_new_password(cls, v: str) -> str:
-        if len(v) < 8 or len(v) > 50:
-            raise ValueError("新密码长度需在 8-50 位之间")
-        return v
+    def validate_new_password(cls, value: str) -> str:
+        if len(value) < 8 or len(value) > 50:
+            raise ValueError("new password length must be between 8 and 50")
+        return value
 
 
 class ChangePhoneRequest(BaseModel):
-    """更换手机号（需验证码）"""
     phone: str
     code: str
 
     @field_validator("phone")
     @classmethod
-    def validate_phone(cls, v: str) -> str:
-        if not re.match(r"^1[3-9]\d{9}$", v):
-            raise ValueError("手机号格式不正确")
-        return v
+    def validate_phone(cls, value: str) -> str:
+        return _validate_phone(value) or value
 
     @field_validator("code")
     @classmethod
-    def validate_code(cls, v: str) -> str:
-        if not re.match(r"^\d{6}$", v):
-            raise ValueError("验证码为 6 位数字")
-        return v
+    def validate_code(cls, value: str) -> str:
+        return _validate_code(value)
 
-
-# ============================================================
-# 响应模型
-# ============================================================
 
 class TokenResponse(BaseModel):
-    """JWT 令牌对"""
     access_token: str
-    refresh_token: str
+    refresh_token: Optional[str] = None
     token_type: str = "bearer"
-    expires_in: int  # access_token 剩余有效秒数
+    expires_in: int
 
 
 class UserInfoResponse(BaseModel):
-    """用户基本信息"""
     id: str
     name: Optional[str] = None
     phone: Optional[str] = None
+    email: Optional[str] = None
     avatar_url: Optional[str] = None
     is_active: bool
     roles: List[str] = []
@@ -159,57 +157,40 @@ class UserInfoResponse(BaseModel):
 
 
 class MessageResponse(BaseModel):
-    """通用消息响应"""
     message: str
 
 
-# ============================================================
-# 二维码登录
-# ============================================================
-
 class QrGenerateResponse(BaseModel):
-    """生成二维码登录会话"""
     qr_id: str
     qr_url: str
-    qr_image: str  # base64 PNG 图片
-    expires_in: int  # 有效期（秒）
+    qr_image: str
+    expires_in: int
 
 
 class QrStatusResponse(BaseModel):
-    """二维码状态查询"""
-    status: str  # pending / scanned / confirmed / expired
+    status: str
     tokens: Optional[dict] = None
+    login_ticket: Optional[str] = None
     user_name: Optional[str] = None
 
 
 class QrConfirmRequest(BaseModel):
-    """手机端确认登录（需要已登录）"""
     qr_id: str
 
 
 class WechatQrResponse(BaseModel):
-    """微信扫码登录 URL"""
     qr_url: str
     state: str
     expires_in: int
 
 
 class WechatStatusResponse(BaseModel):
-    """微信扫码登录状态"""
     status: str
     tokens: Optional[dict] = None
+    login_ticket: Optional[str] = None
     message: Optional[str] = None
 
 
-class WechatBindPasswordRequest(BaseModel):
-    """微信首次扫码后，使用既有手机号密码绑定账号"""
+class WechatBindPasswordRequest(_IdentityRequest):
     state: str
-    phone: str
     password: str
-
-    @field_validator("phone")
-    @classmethod
-    def validate_phone(cls, v: str) -> str:
-        if not re.match(r"^1[3-9]\d{9}$", v):
-            raise ValueError("手机号格式不正确")
-        return v

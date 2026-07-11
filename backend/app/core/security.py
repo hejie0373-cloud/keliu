@@ -66,7 +66,7 @@ def create_access_token(
     return encoded_jwt, jti, expires_in
 
 
-def create_refresh_token(user_id: str) -> tuple[str, str]:
+def create_refresh_token(user_id: str, family_id: Optional[str] = None) -> tuple[str, str]:
     """
     生成 refresh_token
     返回: (token_string, jti)
@@ -75,11 +75,13 @@ def create_refresh_token(user_id: str) -> tuple[str, str]:
     有效期 7 天
     """
     jti = _generate_jti()
+    family = family_id or _generate_jti()
     expire = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
 
     to_encode = {
         "sub": user_id,
         "jti": jti,
+        "family": family,
         "exp": expire,
         "iat": datetime.utcnow(),
         "type": "refresh",

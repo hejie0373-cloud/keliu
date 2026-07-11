@@ -28,7 +28,12 @@ async def _call_workflow(payload: dict, api_key: str) -> Optional[dict]:
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             )
             if resp.status_code == 200:
-                return resp.json()
+                data = resp.json()
+                run_data = data.get("data", {})
+                if run_data.get("status") == "failed":
+                    logger.warning(f"Dify workflow failed: {run_data.get('error', '')[:200]}")
+                    return None
+                return data
             logger.warning(f"Dify {resp.status_code}: {resp.text[:200]}")
             return None
     except Exception as e:

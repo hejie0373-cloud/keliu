@@ -30,7 +30,7 @@ export const importCSV = (file: File) => {
   const form = new FormData()
   form.append('file', file)
   return http.post<{ taskId: string }>('/customers/import', form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
+    headers: { 'Content-Type': undefined },
   })
 }
 

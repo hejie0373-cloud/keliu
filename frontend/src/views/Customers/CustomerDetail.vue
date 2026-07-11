@@ -6,6 +6,13 @@ import http from '@/api/http'
 import { triggerChurnScore, generateCopy } from '@/api/metrics'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import dayjs from 'dayjs'
+import MemoryGraph, { type GraphNodeData } from '@/components/common/MemoryGraph.vue'
+
+// 记忆图谱选中节点
+const selectedNode = ref<GraphNodeData | null>(null)
+function onNodeSelect(node: GraphNodeData) {
+  selectedNode.value = node
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -242,6 +249,46 @@ function genderLabel(g: string) {
         </el-form>
       </section>
 
+      <section class="panel memory-panel" v-reveal>
+        <div class="section-head">
+          <div>
+            <h2>AI 记忆图谱</h2>
+            <p>将该客户的消费习惯、服务偏好、风险信号与关键时刻可视化，点击节点展开细节。</p>
+          </div>
+        </div>
+        <div class="memory-body">
+          <MemoryGraph
+            :name="customer.name"
+            :churn-score="aiMetric?.churnScore ?? null"
+            :clv="aiMetric?.clv ?? null"
+            :dimensions="aiMetric?.dimensions ?? null"
+            :visits="customer.recentVisits || []"
+            @select="onNodeSelect"
+          />
+          <transition name="node-detail">
+            <aside v-if="selectedNode" class="node-detail" :class="`node-detail--${selectedNode.tone}`">
+              <div class="node-detail-head">
+                <span class="node-kind">{{ selectedNode.kind === 'center' ? '客户' : selectedNode.kind === 'dimension' ? '维度' : '关键时刻' }}</span>
+                <button type="button" class="node-close" @click="selectedNode = null">×</button>
+              </div>
+              <h3>{{ selectedNode.title }}</h3>
+              <p v-if="selectedNode.subtitle" class="node-subtitle">{{ selectedNode.subtitle }}</p>
+              <dl v-if="selectedNode.detail" class="node-detail-list">
+                <div v-for="(val, key) in selectedNode.detail" :key="key">
+                  <dt>{{ key }}</dt>
+                  <dd>{{ val }}</dd>
+                </div>
+              </dl>
+            </aside>
+            <aside v-else class="node-detail node-detail--empty">
+              <span class="empty-node-icon">↗</span>
+              <strong>选择一个节点</strong>
+              <p>点击左侧客户、风险或到店节点后，这里会显示对应的信号来源和跟进线索。</p>
+            </aside>
+          </transition>
+        </div>
+      </section>
+
       <div class="detail-main">
         <section class="panel visit-panel">
           <div class="section-head">
@@ -395,7 +442,144 @@ function genderLabel(g: string) {
   display: flex;
   flex-direction: column;
   gap: 18px;
+  color: var(--ink);
 }
+
+/* 记忆图谱 */
+.memory-panel {
+  margin: 0 24px;
+}
+
+.memory-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 300px);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.node-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px;
+  min-height: 220px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  background: var(--surface-2, var(--surface));
+}
+
+.node-detail--danger { border-left-color: var(--danger); }
+.node-detail--success { border-left-color: var(--success); }
+.node-detail--warning { border-left-color: var(--warning); }
+.node-detail--neutral { border-left-color: var(--ink-muted); }
+
+.node-detail--empty {
+  display: grid;
+  align-content: start;
+  place-items: center;
+  gap: 8px;
+  min-height: 220px;
+  padding-top: 72px;
+  border-left-color: var(--line);
+  color: var(--ink-muted);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.node-detail--empty strong {
+  color: var(--ink);
+  font-size: 0.94rem;
+}
+
+.node-detail--empty p {
+  max-width: 220px;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.empty-node-icon {
+  width: 34px;
+  height: 34px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--accent);
+  background: var(--accent-light);
+  font-weight: 800;
+}
+
+.node-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.node-kind {
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.node-close {
+  border: 0;
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.node-close:hover { color: var(--ink); }
+
+.node-detail h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1.05rem;
+}
+
+.node-subtitle {
+  margin: 0;
+  color: var(--ink-soft, var(--ink-muted));
+  font-size: 0.85rem;
+}
+
+.node-detail-list {
+  margin: 6px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.node-detail-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.node-detail-list > div:last-child { border-bottom: 0; }
+
+.node-detail-list dt {
+  color: var(--ink-muted);
+  font-size: 0.8rem;
+}
+
+.node-detail-list dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: right;
+}
+
+.node-detail-enter-active,
+.node-detail-leave-active { transition: opacity 0.25s ease; }
+.node-detail-enter-from,
+.node-detail-leave-to { opacity: 0; }
 
 .detail-hero {
   padding: 24px 24px 0;
@@ -408,7 +592,7 @@ function genderLabel(g: string) {
   margin-bottom: 14px;
   border: 0;
   background: transparent;
-  color: #6b7280;
+  color: var(--ink-muted);
   cursor: pointer;
   font-size: 0.88rem;
 }
@@ -419,7 +603,7 @@ function genderLabel(g: string) {
 }
 
 .back-link:hover {
-  color: #0072b2;
+  color: var(--accent);
 }
 
 .hero-main {
@@ -436,21 +620,21 @@ function genderLabel(g: string) {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: #e6f2f8;
-  color: #0072b2;
+  background: var(--accent-light);
+  color: var(--accent);
   font-size: 1.4rem;
   font-weight: 800;
 }
 
 .hero-kicker {
-  color: #0072b2;
+  color: var(--accent);
   font-size: 0.78rem;
   font-weight: 800;
 }
 
 .hero-copy h1 {
   margin: 5px 0 0;
-  color: #111827;
+  color: var(--ink);
   font-size: 1.5rem;
   line-height: 1.2;
 }
@@ -460,7 +644,7 @@ function genderLabel(g: string) {
   flex-wrap: wrap;
   gap: 8px 12px;
   margin-top: 9px;
-  color: #6b7280;
+  color: var(--ink-muted);
   font-size: 0.86rem;
 }
 
@@ -470,28 +654,28 @@ function genderLabel(g: string) {
   display: grid;
   place-items: center;
   padding: 10px;
-  border: 1px solid #e3e8ef;
-  border-top: 3px solid #6b7280;
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--ink-muted);
   border-radius: 8px;
   background: #fff;
 }
 
 .risk-card span,
 .risk-card small {
-  color: #6b7280;
+  color: var(--ink-muted);
   font-size: 0.76rem;
   font-weight: 700;
 }
 
 .risk-card strong {
-  color: #111827;
+  color: var(--ink);
   font-size: 1.8rem;
   line-height: 1;
 }
 
-.risk-card--high { border-top-color: #d55e00; }
-.risk-card--medium { border-top-color: #e69f00; }
-.risk-card--low { border-top-color: #009e73; }
+.risk-card--high { border-top-color: var(--risk-high); }
+.risk-card--medium { border-top-color: var(--risk-medium); }
+.risk-card--low { border-top-color: var(--risk-low); }
 
 .hero-actions {
   display: flex;
@@ -511,7 +695,7 @@ function genderLabel(g: string) {
 .metric-card,
 .panel,
 .edit-section {
-  border: 1px solid #e3e8ef;
+  border: 1px solid var(--border);
   border-radius: 8px;
   background: #fff;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
@@ -520,17 +704,17 @@ function genderLabel(g: string) {
 .metric-card {
   min-height: 116px;
   padding: 18px;
-  border-top: 3px solid #0072b2;
+  border-top: 3px solid var(--accent);
 }
 
-.metric-card--success { border-top-color: #009e73; }
-.metric-card--accent { border-top-color: #56b4e9; }
-.metric-card--muted { border-top-color: #6b7280; }
+.metric-card--success { border-top-color: var(--risk-low); }
+.metric-card--accent { border-top-color: var(--info); }
+.metric-card--muted { border-top-color: var(--ink-muted); }
 
 .metric-card span,
 .metric-card small {
   display: block;
-  color: #6b7280;
+  color: var(--ink-muted);
   font-size: 0.82rem;
   font-weight: 700;
 }
@@ -538,13 +722,13 @@ function genderLabel(g: string) {
 .metric-card strong {
   display: block;
   margin: 8px 0;
-  color: #111827;
+  color: var(--ink);
   font-size: 1.65rem;
   line-height: 1;
 }
 
 .metric-card small {
-  color: #9ca3af;
+  color: var(--ink-subtle);
   font-size: 0.78rem;
   font-weight: 500;
 }
@@ -588,13 +772,13 @@ function genderLabel(g: string) {
 
 .section-head h2 {
   margin: 0;
-  color: #111827;
+  color: var(--ink);
   font-size: 0.98rem;
 }
 
 .section-head p {
   margin: 4px 0 0;
-  color: #9ca3af;
+  color: var(--ink-subtle);
   font-size: 0.8rem;
 }
 
@@ -603,7 +787,7 @@ function genderLabel(g: string) {
   place-items: center;
   gap: 10px;
   min-height: 220px;
-  color: #9ca3af;
+  color: var(--ink-subtle);
 }
 
 .visit-list {
@@ -615,7 +799,7 @@ function genderLabel(g: string) {
   display: flex;
   gap: 14px;
   padding: 14px 0;
-  border-top: 1px solid #f1f5f9;
+  border-top: 1px solid var(--border);
 }
 
 .visit-item:first-child {
@@ -629,17 +813,17 @@ function genderLabel(g: string) {
   place-items: center;
   flex-shrink: 0;
   border-radius: 8px;
-  background: #f8fafc;
+  background: var(--bg);
 }
 
 .visit-date strong {
-  color: #111827;
+  color: var(--ink);
   font-size: 1.05rem;
   line-height: 1;
 }
 
 .visit-date span {
-  color: #9ca3af;
+  color: var(--ink-subtle);
   font-size: 0.72rem;
 }
 
@@ -655,24 +839,24 @@ function genderLabel(g: string) {
 }
 
 .visit-head strong {
-  color: #111827;
+  color: var(--ink);
   font-size: 0.92rem;
 }
 
 .visit-head span {
-  color: #0072b2;
+  color: var(--accent);
   font-weight: 800;
 }
 
 .visit-sub,
 .visit-feedback {
   margin-top: 4px;
-  color: #9ca3af;
+  color: var(--ink-subtle);
   font-size: 0.8rem;
 }
 
 .visit-feedback {
-  color: #6b7280;
+  color: var(--ink-muted);
 }
 
 .side-stack {
@@ -686,7 +870,7 @@ function genderLabel(g: string) {
   align-items: center;
   gap: 14px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--border);
 }
 
 .score-main {
@@ -702,17 +886,17 @@ function genderLabel(g: string) {
 }
 
 .score-row strong {
-  color: #111827;
+  color: var(--ink);
 }
 
 .score-row p {
   margin: 4px 0 0;
-  color: #6b7280;
+  color: var(--ink-muted);
   font-size: 0.82rem;
 }
 
 .ai-empty {
-  color: #9ca3af;
+  color: var(--ink-subtle);
   font-size: 0.86rem;
   line-height: 1.7;
 }
@@ -737,7 +921,7 @@ function genderLabel(g: string) {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: conic-gradient(var(--gc, #d1d5db) calc(var(--pct, 0) * 360deg), #eef2f7 0deg);
+  background: conic-gradient(var(--gc, var(--border-strong)) calc(var(--pct, 0) * 360deg), var(--border) 0deg);
 }
 
 .gauge-ring span {
@@ -748,28 +932,28 @@ function genderLabel(g: string) {
   justify-content: center;
   border-radius: 50%;
   background: #fff;
-  color: #111827;
+  color: var(--ink);
   font-size: 0.82rem;
   font-weight: 800;
 }
 
-.gauge-low { --gc: #009e73; }
-.gauge-medium { --gc: #e69f00; }
-.gauge-high { --gc: #d55e00; }
+.gauge-low { --gc: var(--risk-low); }
+.gauge-medium { --gc: var(--risk-medium); }
+.gauge-high { --gc: var(--risk-high); }
 
 .gauge label {
-  color: #6b7280;
+  color: var(--ink-muted);
   font-size: 0.74rem;
 }
 
 .ai-advice {
   padding: 14px;
   border-radius: 8px;
-  background: #f8fafc;
+  background: var(--bg);
 }
 
 .ai-advice span {
-  color: #0072b2;
+  color: var(--accent);
   font-size: 0.78rem;
   font-weight: 800;
 }
@@ -778,7 +962,7 @@ function genderLabel(g: string) {
 .copy-result p,
 .copy-dialog-body p {
   margin: 6px 0 0;
-  color: #374151;
+  color: var(--ink);
   font-size: 0.86rem;
   line-height: 1.65;
 }
@@ -793,7 +977,7 @@ function genderLabel(g: string) {
   margin-top: 12px;
   padding: 14px;
   border-radius: 8px;
-  background: #f8fafc;
+  background: var(--bg);
 }
 
 @media (max-width: 1060px) {

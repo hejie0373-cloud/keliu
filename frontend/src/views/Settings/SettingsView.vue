@@ -12,20 +12,28 @@ const activeTab = ref('profile')
 const profileLoading = ref(false)
 
 // ---- 个人信息 ----
-const profile = ref({ name: '', phone: '' })
-onMounted(() => {
+const profile = ref({ name: '', phone: '', email: '' })
+
+function syncProfileFromUser() {
   if (auth.user) {
     profile.value = {
       name: auth.user.name || '',
       phone: auth.user.phone || '',
+      email: auth.user.email || '',
     }
   }
+}
+
+onMounted(() => {
+  syncProfileFromUser()
 })
+
 async function saveProfile() {
   profileLoading.value = true
   try {
     await authApi.updateProfile({ name: profile.value.name })
     await auth.fetchMe()
+    syncProfileFromUser()
     ElMessage.success('个人信息已更新')
   } finally { profileLoading.value = false }
 }
@@ -57,7 +65,7 @@ let phoneTimer: number | null = null
 async function sendPhoneCode() {
   if (!/^1[3-9]\d{9}$/.test(phoneForm.value.phone)) { ElMessage.warning('请输入正确手机号'); return }
   if (phoneCountdown.value > 0) return
-  try { await auth.sendCode(phoneForm.value.phone); phoneCountdown.value = 60
+  try { await auth.sendCode(phoneForm.value.phone, 'change_phone'); phoneCountdown.value = 60
     phoneTimer = window.setInterval(() => { phoneCountdown.value--; if (phoneCountdown.value <= 0 && phoneTimer) clearInterval(phoneTimer) }, 1000)
   } catch { /* */ }
 }
@@ -67,7 +75,7 @@ async function changePhone() {
   try {
     await authApi.changePhone(phoneForm.value.phone, phoneForm.value.code)
     await auth.fetchMe()
-    profile.value.phone = auth.user?.phone || ''
+    syncProfileFromUser()
     phoneForm.value = { phone: '', code: '' }
     ElMessage.success('手机号已更换')
   } finally { phoneLoading.value = false }
@@ -100,7 +108,7 @@ async function saveStore() {
 <template>
   <div class="settings">
     <!-- 顶部标题栏 -->
-    <header class="settings-hero">
+    <header class="settings-hero" v-reveal>
       <div class="hero-avatar">
         <span class="avatar-text">{{ (auth.user?.name || '用')[0] }}</span>
       </div>
@@ -112,7 +120,7 @@ async function saveStore() {
     </header>
 
     <!-- Tab 导航 -->
-    <nav class="settings-tabs">
+    <nav class="settings-tabs" v-reveal>
       <button
         :class="['tab-item', { active: activeTab === 'profile' }]"
         @click="activeTab = 'profile'"
@@ -136,7 +144,7 @@ async function saveStore() {
     <!-- 内容区 -->
     <div class="settings-body">
       <!-- ========== 个人信息 ========== -->
-      <section v-if="activeTab === 'profile'" class="section">
+      <section v-if="activeTab === 'profile'" class="section" v-reveal>
         <div class="card">
           <div class="card-head">
             <span class="card-badge">基本资料</span>
@@ -168,6 +176,21 @@ async function saveStore() {
                   <template #prefix>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px">
                       <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/>
+                    </svg>
+                  </template>
+                </el-input>
+              </el-form-item>
+            </div>
+            <div class="form-row">
+              <el-form-item label="邮箱">
+                <el-input
+                  :model-value="profile.email || '未绑定邮箱'"
+                  disabled
+                  size="large"
+                >
+                  <template #prefix>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px">
+                      <rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>
                     </svg>
                   </template>
                 </el-input>
@@ -242,7 +265,7 @@ async function saveStore() {
       </section>
 
       <!-- ========== 店铺信息 ========== -->
-      <section v-if="activeTab === 'store'" class="section">
+      <section v-if="activeTab === 'store'" class="section" v-reveal>
         <div class="card">
           <div class="card-head">
             <span class="card-badge">店铺资料</span>
@@ -294,10 +317,10 @@ async function saveStore() {
   align-items: center;
   gap: 20px;
   padding: 24px;
-  background: #fff;
-  border: 1px solid #e3e8ef;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  box-shadow: var(--shadow-sm);
   margin-bottom: 18px;
 }
 
@@ -305,16 +328,16 @@ async function saveStore() {
   width: 72px;
   height: 72px;
   border-radius: 50%;
-  background: #0072b2;
+  background: var(--accent);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(0, 114, 178, 0.2);
+  box-shadow: var(--shadow-accent);
 }
 
 .avatar-text {
-  color: #fff;
+  color: var(--accent-contrast);
   font-size: 1.75rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -323,7 +346,7 @@ async function saveStore() {
 .hero-meta { min-width: 0; }
 
 .hero-kicker {
-  color: #0072b2;
+  color: var(--accent);
   font-size: 0.78rem;
   font-weight: 800;
 }
@@ -332,7 +355,7 @@ async function saveStore() {
   margin: 6px 0 4px;
   font-size: 1.3rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--ink);
   letter-spacing: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -342,15 +365,15 @@ async function saveStore() {
 .hero-role {
   margin: 0;
   font-size: 0.88rem;
-  color: #6b7280;
+  color: var(--ink-muted);
 }
 
 /* ---- Tab 导航 ---- */
 .settings-tabs {
   display: flex;
   gap: 4px;
-  background: #f8fafc;
-  border: 1px solid #e3e8ef;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 4px;
   margin-bottom: 18px;
@@ -366,20 +389,20 @@ async function saveStore() {
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: #6b7280;
+  color: var(--ink-muted);
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
-.tab-item:hover { color: #374151; background: rgba(255,255,255,0.6); }
+.tab-item:hover { color: var(--ink); background: color-mix(in oklch, var(--surface) 72%, transparent); }
 
 .tab-item.active {
-  background: #fff;
-  color: #0072b2;
+  background: var(--surface);
+  color: var(--accent);
   font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  box-shadow: var(--shadow-xs);
 }
 
 /* ---- 内容区 ---- */
@@ -388,14 +411,14 @@ async function saveStore() {
 
 /* ---- 卡片 ---- */
 .card {
-  background: #fff;
-  border: 1px solid #e3e8ef;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 24px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
-  transition: box-shadow 0.2s;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s, border-color 0.2s;
 }
-.card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.card:hover { border-color: var(--accent-light); box-shadow: var(--shadow-md); }
 
 .card-head { display: flex; align-items: center; margin-bottom: 18px; }
 
@@ -406,15 +429,15 @@ async function saveStore() {
   border-radius: 6px;
   font-size: 0.8rem;
   font-weight: 600;
-  color: #0072b2;
-  background: #e6f2f8;
+  color: var(--accent);
+  background: var(--accent-light);
   letter-spacing: 0;
 }
-.card-badge--warn  { color: #d97706; background: #fffbeb; }
-.card-badge--accent { color: #009e73; background: #ecfdf5; }
+.card-badge--warn  { color: var(--warning); background: var(--warning-light); }
+.card-badge--accent { color: var(--success); background: var(--success-light); }
 
 .card-desc {
-  color: #6b7280;
+  color: var(--ink-muted);
   font-size: 0.9rem;
   line-height: 1.6;
   margin: 0 0 24px;
@@ -425,18 +448,18 @@ async function saveStore() {
 .settings-form :deep(.el-form-item__label) {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #374151;
+  color: var(--ink);
   padding-bottom: 6px;
 }
 .settings-form :deep(.el-input__wrapper) {
   border-radius: 8px;
-  box-shadow: 0 0 0 1px #e5e7eb inset;
+  box-shadow: 0 0 0 1px var(--border) inset;
   transition: box-shadow 0.2s;
 }
-.settings-form :deep(.el-input__wrapper:hover) { box-shadow: 0 0 0 1px #d1d5db inset; }
+.settings-form :deep(.el-input__wrapper:hover) { box-shadow: 0 0 0 1px var(--border-strong) inset; }
 .settings-form :deep(.el-input.is-disabled .el-input__wrapper) {
-  background: #f9fafb;
-  box-shadow: 0 0 0 1px #e5e7eb inset;
+  background: var(--surface-2);
+  box-shadow: 0 0 0 1px var(--border) inset;
 }
 
 .form-row { margin-bottom: 20px; }
@@ -450,10 +473,10 @@ async function saveStore() {
   border-radius: 8px;
   font-size: 0.85rem;
   white-space: nowrap;
-  border-color: #d1d5db;
-  color: #374151;
+  border-color: var(--border-strong);
+  color: var(--ink);
 }
-.code-send-btn:hover { border-color: #2563eb; color: #2563eb; }
+.code-send-btn:hover { border-color: var(--accent); color: var(--accent); }
 
 /* ---- 提交按钮 ---- */
 .submit-btn {
@@ -464,11 +487,11 @@ async function saveStore() {
   font-size: 0.95rem;
   font-weight: 600;
   letter-spacing: 0;
-  background: #0072b2;
-  border-color: #0072b2;
+  background: var(--accent);
+  border-color: var(--accent);
   transition: all 0.2s;
 }
-.submit-btn:hover { background: #005f95; border-color: #005f95; }
+.submit-btn:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 
 @media (max-width: 480px) {
   .form-row--split { grid-template-columns: 1fr; }

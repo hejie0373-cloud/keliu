@@ -13,7 +13,7 @@ const channels = ref<string[]>(['sms'])
 const sendMode = ref<'now' | 'scheduled'>('now')
 const scheduledAt = ref('')
 const targetRiskLevel = ref<'high' | 'all' | null>('high')
-const targetCustomerIds = ref((route.query.customerId as string) || '')
+const targetCustomers = ref((route.query.customerId as string) || '')
 const loading = ref(false)
 
 const channelOptions = [
@@ -39,10 +39,10 @@ async function handleSubmit() {
       template: template.value.trim(),
       channels: channels.value as ('sms' | 'email' | 'wechat')[],
       scheduledAt: sendMode.value === 'scheduled' ? scheduledAt.value : null,
-      targetCustomerIds: targetCustomerIds.value
-        ? targetCustomerIds.value.split(',').map((s) => s.trim()).filter(Boolean)
+      targetCustomerIds: targetCustomers.value
+        ? targetCustomers.value.split(',').map((s) => s.trim()).filter(Boolean)
         : null,
-      targetRiskLevel: targetCustomerIds.value ? null : targetRiskLevel.value,
+      targetRiskLevel: targetCustomers.value ? null : targetRiskLevel.value,
     })
     ElMessage.success('活动已创建并发送')
     router.push('/campaigns')
@@ -62,7 +62,7 @@ async function handleSubmit() {
     </header>
 
     <div class="editor-grid">
-      <section class="form-panel">
+      <section class="form-panel" v-reveal>
         <el-form label-position="top">
           <div class="form-block">
             <div class="block-head">
@@ -89,7 +89,7 @@ async function handleSubmit() {
               <el-radio-button value="high">高风险客户</el-radio-button>
               <el-radio-button value="all">所有客户</el-radio-button>
             </el-radio-group>
-            <el-input v-model="targetCustomerIds" placeholder="可选，客户 ID 逗号分隔，如：abc123,def456" />
+            <el-input v-model="targetCustomers" placeholder="可选，客户 ID 逗号分隔，如：abc123,def456" />
           </div>
 
           <div class="form-block">
@@ -132,13 +132,13 @@ async function handleSubmit() {
         </el-form>
       </section>
 
-      <aside class="preview-panel">
+      <aside class="preview-panel" v-reveal>
         <div class="preview-card">
           <span class="preview-kicker">发送预览</span>
           <h3>{{ name || '未命名活动' }}</h3>
           <div class="preview-line">
             <span>目标</span>
-            <strong>{{ targetCustomerIds ? '指定客户' : targetRiskLevel === 'all' ? '所有客户' : '高风险客户' }}</strong>
+            <strong>{{ targetCustomers ? '指定客户' : targetRiskLevel === 'all' ? '所有客户' : '高风险客户' }}</strong>
           </div>
           <div class="preview-line">
             <span>渠道</span>
@@ -173,24 +173,24 @@ async function handleSubmit() {
   margin-bottom: 14px;
   border: 0;
   background: transparent;
-  color: #6b7280;
+  color: var(--ink-muted);
   cursor: pointer;
   font-size: 0.88rem;
 }
 
 .back-link:hover {
-  color: #0072b2;
+  color: var(--accent);
 }
 
 .hero-kicker {
-  color: #0072b2;
+  color: var(--accent);
   font-size: 0.78rem;
   font-weight: 800;
 }
 
 .editor-hero h1 {
   margin: 8px 0 0;
-  color: #111827;
+  color: var(--ink);
   font-size: 1.5rem;
   line-height: 1.2;
 }
@@ -198,7 +198,7 @@ async function handleSubmit() {
 .editor-hero p {
   max-width: 680px;
   margin: 10px 0 0;
-  color: #6b7280;
+  color: var(--ink-muted);
 }
 
 .editor-grid {
@@ -211,10 +211,10 @@ async function handleSubmit() {
 
 .form-panel,
 .preview-card {
-  border: 1px solid #e3e8ef;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
 }
 
 .form-panel {
@@ -223,7 +223,7 @@ async function handleSubmit() {
 
 .form-block {
   padding: 18px 0;
-  border-top: 1px solid #eef2f7;
+  border-top: 1px solid var(--border);
 }
 
 .form-block:first-child {
@@ -245,21 +245,21 @@ async function handleSubmit() {
   justify-content: center;
   flex-shrink: 0;
   border-radius: 8px;
-  background: #e6f2f8;
-  color: #0072b2;
+  background: var(--accent-light);
+  color: var(--accent);
   font-size: 0.78rem;
   font-weight: 800;
 }
 
 .block-head h2 {
   margin: 0;
-  color: #111827;
+  color: var(--ink);
   font-size: 0.98rem;
 }
 
 .block-head p {
   margin: 4px 0 0;
-  color: #9ca3af;
+  color: var(--ink-subtle);
   font-size: 0.8rem;
 }
 
@@ -297,14 +297,14 @@ async function handleSubmit() {
 }
 
 .preview-kicker {
-  color: #0072b2;
+  color: var(--accent);
   font-size: 0.78rem;
   font-weight: 800;
 }
 
 .preview-card h3 {
   margin: 8px 0 16px;
-  color: #111827;
+  color: var(--ink);
   font-size: 1.1rem;
 }
 
@@ -313,15 +313,15 @@ async function handleSubmit() {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 0;
-  border-top: 1px solid #eef2f7;
+  border-top: 1px solid var(--border);
 }
 
 .preview-line span {
-  color: #9ca3af;
+  color: var(--ink-subtle);
 }
 
 .preview-line strong {
-  color: #111827;
+  color: var(--ink);
   text-align: right;
 }
 
@@ -330,8 +330,8 @@ async function handleSubmit() {
   margin: 16px 0;
   padding: 14px;
   border-radius: 8px;
-  background: #f8fafc;
-  color: #374151;
+  background: var(--surface-2);
+  color: var(--ink);
   font-size: 0.86rem;
   line-height: 1.7;
   white-space: pre-wrap;

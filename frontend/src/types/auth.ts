@@ -12,18 +12,17 @@ export interface User {
 
 export interface TokenResponse {
   accessToken: string
-  refreshToken: string
+  refreshToken?: string | null
   tokenType: string
   expiresIn: number
 }
 
-export interface LoginByPhoneForm {
-  phone: string
+export interface LoginByOtpForm {
+  account: string
   code: string
 }
 
-export interface LoginByEmailForm {
-  email: string
+export interface LoginByPasswordForm {
+  account: string
   password: string
 }
-

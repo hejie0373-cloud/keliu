@@ -1,71 +1,77 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
-import type { TokenResponse, User } from '@/types/auth'
+import { computed, ref } from 'vue'
+import type { User } from '@/types/auth'
 import * as authApi from '@/api/auth'
+
+type OtpPurpose = 'login' | 'register' | 'reset_password' | 'bind_identity' | 'change_phone'
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
   const accessToken = ref<string | null>(localStorage.getItem('accessToken'))
-  const refreshToken = ref<string | null>(sessionStorage.getItem('refreshToken'))
+  const refreshToken = ref<string | null>(null)
 
   const isLoggedIn = computed(() => !!accessToken.value)
   const hasStore = computed(() => !!user.value?.storeId)
   const roles = computed(() => user.value?.roles || [])
 
-  async function sendCode(phone: string) {
-    await authApi.sendCode(phone)
+  async function sendCode(account: string, purpose: OtpPurpose = 'login') {
+    await authApi.sendCode(account, purpose)
   }
 
-  async function loginByPhone(phone: string, code: string) {
-    const { data } = await authApi.loginByPhone(phone, code)
-    setTokens(data.accessToken, data.refreshToken)
+  async function loginByPhone(account: string, code: string) {
+    const { data } = await authApi.loginByPhone(account, code)
+    setTokens(data.accessToken)
     await fetchMe()
   }
 
-  async function loginByPassword(phone: string, password: string) {
-    const { data } = await authApi.loginByPassword(phone, password)
-    setTokens(data.accessToken, data.refreshToken)
+  async function loginByPassword(account: string, password: string) {
+    const { data } = await authApi.loginByPassword(account, password)
+    setTokens(data.accessToken)
     await fetchMe()
   }
 
-  async function registerByPhone(phone: string, code: string, password: string) {
-    const { data } = await authApi.registerByPhone(phone, code, password)
-    setTokens(data.accessToken, data.refreshToken)
+  async function loginByEmail(email: string, password: string) {
+    await loginByPassword(email, password)
+  }
+
+  async function registerByPhone(account: string, code: string, password: string) {
+    const { data } = await authApi.registerByPhone(account, code, password)
+    setTokens(data.accessToken)
     await fetchMe()
+  }
+
+  async function registerByEmail(email: string, password: string) {
+    const { data } = await authApi.registerByPassword(email, password)
+    setTokens(data.accessToken)
+    await fetchMe()
+    return data
   }
 
   async function fetchMe() {
     try {
-      const { data } = await authApi.getMe()
+      const { data } = await authApi.getMe({ silentError: true })
       user.value = data
     } catch {
-      // 未登录或 token 失效
+      // unauthenticated or expired token
     }
   }
 
-  function setTokens(access: string, refresh: string) {
+  function setTokens(access: string, _refresh?: string | null) {
     accessToken.value = access
-    refreshToken.value = refresh
     localStorage.setItem('accessToken', access)
-    sessionStorage.setItem('refreshToken', refresh)
   }
 
   async function logout() {
-    const rt = refreshToken.value
-    // 先清本地状态，确保路由守卫立刻生效
     accessToken.value = null
     refreshToken.value = null
     user.value = null
     localStorage.removeItem('accessToken')
-    sessionStorage.removeItem('refreshToken')
-    // 后台通知服务端作废 token（不阻塞跳转）
-    if (rt) {
-      try { await authApi.logout(rt) } catch { /* ignore */ }
-    }
+    try { await authApi.logout() } catch { /* ignore */ }
   }
 
   return {
     user, accessToken, refreshToken, isLoggedIn, hasStore, roles,
-    sendCode, registerByPhone, loginByPhone, loginByPassword, fetchMe, setTokens, logout,
+    sendCode, registerByPhone, registerByEmail, loginByPhone, loginByPassword, loginByEmail,
+    fetchMe, setTokens, logout,
   }
 })

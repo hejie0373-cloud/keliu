@@ -55,7 +55,7 @@ onMounted(async () => { await Promise.all([loadSummary(), loadOrders()]) })
 
 <template>
   <div class="admin-route page">
-    <header class="hero">
+    <header class="hero" v-reveal>
       <div>
         <h1>支付订单</h1>
         <p>查看平台收入、订单状态和商家支付记录 · 共 {{ total }} 条</p>
@@ -63,7 +63,7 @@ onMounted(async () => { await Promise.all([loadSummary(), loadOrders()]) })
       <button class="refresh-btn" @click="loadOrders">刷新</button>
     </header>
 
-    <div class="summary-strip">
+    <div class="summary-strip" v-reveal>
       <div class="sum-item"><span class="sum-label">今日收入</span><strong class="sum-val">{{ money(summary?.todayRevenueCents || 0) }}</strong></div>
       <div class="sum-div" />
       <div class="sum-item"><span class="sum-label">本月收入</span><strong class="sum-val">{{ money(summary?.monthRevenueCents || 0) }}</strong></div>
@@ -75,11 +75,11 @@ onMounted(async () => { await Promise.all([loadSummary(), loadOrders()]) })
       <div class="sum-item sum-wide"><span class="sum-label">套餐分布</span><span class="sum-dist">{{ formatDist(summary?.planCounts) }}</span></div>
     </div>
 
-    <div class="filter-bar">
+    <div class="filter-bar" v-reveal>
       <button v-for="o in statusOptions" :key="o.value" :class="['chip', { active: status === o.value }]" @click="status = o.value; onStatusChange()">{{ o.label }}</button>
     </div>
 
-    <div class="table-wrap">
+    <div class="table-wrap" v-reveal>
       <table>
         <thead><tr><th>订单号</th><th>店铺</th><th>套餐</th><th>金额</th><th>渠道</th><th>状态</th><th>支付时间</th><th>创建时间</th></tr></thead>
         <tbody>
@@ -126,16 +126,16 @@ onMounted(async () => { await Promise.all([loadSummary(), loadOrders()]) })
 
 .filter-bar { display: flex; gap: 6px; margin-bottom: 14px; }
 .chip { padding: 5px 14px; border: 1px solid var(--admin-border); border-radius: 4px; background: var(--admin-surface); color: var(--admin-text-secondary); font-size: 0.78rem; cursor: pointer; transition: all 0.15s; }
-.chip:hover { border-color: #c4c9d2; }
+.chip:hover { border-color: var(--admin-text-secondary); }
 .chip.active { border-color: var(--admin-accent); background: var(--admin-accent-light); color: var(--admin-accent); font-weight: 600; }
 
 .table-wrap { background: var(--admin-surface); border: 1px solid var(--admin-border); border-radius: 8px; overflow: hidden; }
 table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
-thead { background: #f9fafb; }
+thead { background: color-mix(in srgb, var(--admin-accent-light) 28%, var(--admin-surface)); }
 th { padding: 10px 14px; text-align: left; font-size: 0.71rem; font-weight: 700; color: var(--admin-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--admin-border); }
-td { padding: 10px 14px; border-bottom: 1px solid #f3f4f6; color: var(--admin-text); }
+td { padding: 10px 14px; border-bottom: 1px solid var(--admin-border); color: var(--admin-text); }
 tr:last-child td { border-bottom: none; }
-tbody tr:hover { background: #fafbfc; }
+tbody tr:hover { background: color-mix(in srgb, var(--admin-accent-light) 20%, var(--admin-surface)); }
 .mono { font-family: 'SF Mono','Cascadia Code','Consolas',monospace; font-size: 0.78rem; }
 .time { color: var(--admin-text-secondary); }
 
@@ -143,7 +143,7 @@ tbody tr:hover { background: #fafbfc; }
 .tag-ok { background: var(--admin-green-light); color: var(--admin-green); }
 .tag-warn { background: var(--admin-amber-light); color: var(--admin-amber); }
 .tag-bad { background: var(--admin-red-light); color: var(--admin-red); }
-.tag-dim { background: #f3f4f6; color: var(--admin-text-secondary); }
+.tag-dim { background: color-mix(in srgb, var(--admin-accent-light) 22%, var(--admin-surface)); color: var(--admin-text-secondary); }
 
 .empty { padding: 40px; text-align: center; color: var(--admin-text-secondary); }
 .pager { display: flex; align-items: center; justify-content: center; gap: 16px; padding-top: 16px; }

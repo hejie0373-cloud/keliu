@@ -73,37 +73,62 @@ SMS_CODE_PREFIX = "sms_code"
 SMS_CODE_TTL = 300
 SMS_RATE_LIMIT_TTL = 60
 
+OTP_CODE_PREFIX = "otp_code"
+OTP_CODE_TTL = 300
+OTP_RATE_LIMIT_TTL = 60
+
+
+def _otp_key(purpose: str, identity_type: str, identifier: str) -> str:
+    return f"{OTP_CODE_PREFIX}:{purpose}:{identity_type}:{identifier}"
+
+
+async def store_otp_code(purpose: str, identity_type: str, identifier: str, code: str) -> None:
+    r = await get_redis()
+    await r.setex(_otp_key(purpose, identity_type, identifier), OTP_CODE_TTL, code)
+
+
+async def verify_otp_code(purpose: str, identity_type: str, identifier: str, code: str) -> bool:
+    r = await get_redis()
+    stored = await r.get(_otp_key(purpose, identity_type, identifier))
+    return stored == code if stored is not None else False
+
+
+async def delete_otp_code(purpose: str, identity_type: str, identifier: str) -> None:
+    r = await get_redis()
+    await r.delete(_otp_key(purpose, identity_type, identifier))
+
+
+async def check_otp_rate_limit(purpose: str, identity_type: str, identifier: str) -> bool:
+    r = await get_redis()
+    key = f"{OTP_CODE_PREFIX}:rate:{purpose}:{identity_type}:{identifier}"
+    if await r.exists(key):
+        return False
+    await r.setex(key, OTP_RATE_LIMIT_TTL, "1")
+    return True
+
 
 async def store_sms_code(phone: str, code: str) -> None:
     """存储短信验证码。"""
-    r = await get_redis()
-    await r.setex(f"{SMS_CODE_PREFIX}:{phone}", SMS_CODE_TTL, code)
+    await store_otp_code("login", "phone", phone, code)
 
 
 async def verify_sms_code(phone: str, code: str) -> bool:
     """校验短信验证码。"""
-    r = await get_redis()
-    stored = await r.get(f"{SMS_CODE_PREFIX}:{phone}")
-    return stored == code if stored is not None else False
+    return await verify_otp_code("login", "phone", phone, code)
 
 
 async def delete_sms_code(phone: str) -> None:
     """删除短信验证码。"""
-    r = await get_redis()
-    await r.delete(f"{SMS_CODE_PREFIX}:{phone}")
+    await delete_otp_code("login", "phone", phone)
 
 
 async def check_sms_rate_limit(phone: str) -> bool:
     """限制同一手机号 60 秒内只能发送一次验证码。"""
-    r = await get_redis()
-    key = f"{SMS_CODE_PREFIX}:rate:{phone}"
-    if await r.exists(key):
-        return False
-    await r.setex(key, SMS_RATE_LIMIT_TTL, "1")
-    return True
+    return await check_otp_rate_limit("login", "phone", phone)
 
 
 TOKEN_BLACKLIST_PREFIX = "token_blacklist"
+TOKEN_FAMILY_BLACKLIST_PREFIX = "token_family_blacklist"
 
 
 async def add_to_blacklist(jti: str, ttl: int) -> None:
@@ -116,6 +141,16 @@ async def is_blacklisted(jti: str) -> bool:
     """检查 token jti 是否已进入黑名单。"""
     r = await get_redis()
     return await r.exists(f"{TOKEN_BLACKLIST_PREFIX}:{jti}") > 0
+
+
+async def add_family_to_blacklist(family_id: str, ttl: int) -> None:
+    r = await get_redis()
+    await r.setex(f"{TOKEN_FAMILY_BLACKLIST_PREFIX}:{family_id}", ttl, "1")
+
+
+async def is_family_blacklisted(family_id: str) -> bool:
+    r = await get_redis()
+    return await r.exists(f"{TOKEN_FAMILY_BLACKLIST_PREFIX}:{family_id}") > 0
 
 
 IMPORT_PREFIX = "import_progress"

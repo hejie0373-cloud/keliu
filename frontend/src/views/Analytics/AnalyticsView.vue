@@ -6,16 +6,27 @@ import VChart from 'vue-echarts'
 import * as echarts from 'echarts'
 echarts.use([])
 import dayjs from 'dayjs'
+import StatCard from '@/components/common/StatCard.vue'
+import { useTheme } from '@/composables/useTheme'
 
-const COLORS = {
-  blue: '#0072B2',
-  orange: '#E69F00',
-  green: '#009E73',
-  red: '#D55E00',
-  ink: '#374151',
-  muted: '#9CA3AF',
-  light: '#F3F4F6',
-}
+const { theme } = useTheme()
+
+// 图表配色跟随主题：亮色用固定色板，暗色降低对比、提亮网格线
+const COLORS = computed(() => {
+  const dark = theme.value === 'dark'
+  return {
+    blue: '#0072B2',
+    orange: '#E69F00',
+    green: '#009E73',
+    greenArea: dark ? 'rgba(0,158,115,0.28)' : 'rgba(0,158,115,0.22)',
+    red: '#D55E00',
+    ink: dark ? '#e5e7eb' : '#374151',
+    muted: dark ? '#94a3b8' : '#9CA3AF',
+    light: dark ? 'rgba(148,163,184,0.18)' : '#F3F4F6',
+    tooltipBg: dark ? '#1e293b' : '#fff',
+    tooltipBorder: dark ? '#334155' : '#E5E7EB',
+  }
+})
 
 const reportType = ref<'visits' | 'revenue' | 'ai'>('visits')
 const granularity = ref<'day' | 'week' | 'month'>('day')
@@ -50,40 +61,45 @@ async function load() {
 
 onMounted(() => load())
 
-const visitOption = computed(() => ({
-  tooltip: { trigger: 'axis' as const, backgroundColor: '#fff', borderColor: '#E5E7EB', textStyle: { color: COLORS.ink, fontSize: 13 } },
-  legend: { data: ['到店量', '客户数'], bottom: 0, textStyle: { color: COLORS.muted, fontSize: 12 }, icon: 'roundRect' },
+const visitOption = computed(() => {
+  const c = COLORS.value
+  return {
+  tooltip: { trigger: 'axis' as const, backgroundColor: c.tooltipBg, borderColor: c.tooltipBorder, textStyle: { color: c.ink, fontSize: 13 } },
+  legend: { data: ['到店量', '客户数'], bottom: 0, textStyle: { color: c.muted, fontSize: 12 }, icon: 'roundRect' },
   grid: { left: 16, right: 16, top: 16, bottom: 36 },
   xAxis: {
     type: 'category',
     data: visitData.value.map((d) => d.period),
     axisLine: { show: false },
     axisTick: { show: false },
-    axisLabel: { color: COLORS.muted, fontSize: 11 },
+    axisLabel: { color: c.muted, fontSize: 11 },
   },
   yAxis: {
     type: 'value',
     minInterval: 1,
-    splitLine: { lineStyle: { color: COLORS.light, type: 'dashed' } },
-    axisLabel: { color: COLORS.muted, fontSize: 11 },
+    splitLine: { lineStyle: { color: c.light, type: 'dashed' } },
+    axisLabel: { color: c.muted, fontSize: 11 },
   },
   series: [
-    { name: '到店量', type: 'bar', data: visitData.value.map((d) => d.visitCount), barWidth: 14, itemStyle: { color: COLORS.blue, borderRadius: [4, 4, 0, 0] }, barGap: '30%' },
-    { name: '客户数', type: 'line', data: visitData.value.map((d) => d.uniqueCustomers), smooth: true, symbol: 'circle', symbolSize: 5, lineStyle: { color: COLORS.orange, width: 2 }, itemStyle: { color: COLORS.orange } },
+    { name: '到店量', type: 'bar', data: visitData.value.map((d) => d.visitCount), barWidth: 14, itemStyle: { color: c.blue, borderRadius: [4, 4, 0, 0] }, barGap: '30%' },
+    { name: '客户数', type: 'line', data: visitData.value.map((d) => d.uniqueCustomers), smooth: true, symbol: 'circle', symbolSize: 5, lineStyle: { color: c.orange, width: 2 }, itemStyle: { color: c.orange } },
   ],
-}))
+  }
+})
 
-const revenueOption = computed(() => ({
-  tooltip: { trigger: 'axis' as const, backgroundColor: '#fff', borderColor: '#E5E7EB', textStyle: { color: COLORS.ink, fontSize: 13 } },
+const revenueOption = computed(() => {
+  const c = COLORS.value
+  return {
+  tooltip: { trigger: 'axis' as const, backgroundColor: c.tooltipBg, borderColor: c.tooltipBorder, textStyle: { color: c.ink, fontSize: 13 } },
   grid: { left: 16, right: 16, top: 16, bottom: 8 },
   xAxis: {
     type: 'category',
     data: revenueData.value.map((d) => d.period),
     axisLine: { show: false },
     axisTick: { show: false },
-    axisLabel: { color: COLORS.muted, fontSize: 11 },
+    axisLabel: { color: c.muted, fontSize: 11 },
   },
-  yAxis: { type: 'value', splitLine: { lineStyle: { color: COLORS.light, type: 'dashed' } }, axisLabel: { color: COLORS.muted, fontSize: 11 } },
+  yAxis: { type: 'value', splitLine: { lineStyle: { color: c.light, type: 'dashed' } }, axisLabel: { color: c.muted, fontSize: 11 } },
   series: [{
     name: '营收',
     type: 'line',
@@ -91,8 +107,8 @@ const revenueOption = computed(() => ({
     symbol: 'circle',
     symbolSize: 4,
     data: revenueData.value.map((d) => d.totalAmount),
-    lineStyle: { color: COLORS.green, width: 2.5 },
-    itemStyle: { color: COLORS.green },
+    lineStyle: { color: c.green, width: 2.5 },
+    itemStyle: { color: c.green },
     areaStyle: {
       color: {
         type: 'linear',
@@ -101,13 +117,14 @@ const revenueOption = computed(() => ({
         x2: 0,
         y2: 1,
         colorStops: [
-          { offset: 0, color: 'rgba(0,158,115,0.12)' },
+          { offset: 0, color: c.greenArea },
           { offset: 1, color: 'rgba(0,158,115,0.0)' },
         ],
       },
     },
   }],
-}))
+  }
+})
 
 async function handleExport() {
   const { data } = await exportCSV({ type: reportType.value === 'ai' ? 'customers' : 'visits', startDate: startDate.value, endDate: endDate.value })
@@ -152,16 +169,8 @@ async function handleExport() {
 
     <section v-if="reportType === 'visits'" class="report-section" v-loading="loading">
       <div class="metric-grid metric-grid--compact">
-        <article class="metric-card">
-          <span>到店量</span>
-          <strong>{{ visitTotal }}</strong>
-          <small>当前时间范围累计</small>
-        </article>
-        <article class="metric-card metric-card--success">
-          <span>客户数</span>
-          <strong>{{ uniqueTotal }}</strong>
-          <small>去重客户累计</small>
-        </article>
+        <StatCard label="到店量" :value="visitTotal" note="当前时间范围累计" tone="accent" :delay="0" />
+        <StatCard label="客户数" :value="uniqueTotal" note="去重客户累计" tone="success" :delay="0.08" />
       </div>
       <div class="panel">
         <div class="panel-head">
@@ -176,16 +185,8 @@ async function handleExport() {
 
     <section v-if="reportType === 'revenue'" class="report-section" v-loading="loading">
       <div class="metric-grid metric-grid--compact">
-        <article class="metric-card metric-card--success">
-          <span>营收合计</span>
-          <strong>¥{{ revenueTotal.toLocaleString() }}</strong>
-          <small>当前时间范围累计</small>
-        </article>
-        <article class="metric-card metric-card--accent">
-          <span>平均消费</span>
-          <strong>¥{{ avgRevenue.toFixed(0) }}</strong>
-          <small>按报表周期均值</small>
-        </article>
+        <StatCard label="营收合计" :value="revenueTotal" prefix="¥" note="当前时间范围累计" tone="success" :delay="0" />
+        <StatCard label="平均消费" :value="avgRevenue" prefix="¥" note="按报表周期均值" tone="accent" :delay="0.08" />
       </div>
       <div class="panel">
         <div class="panel-head">
@@ -200,10 +201,10 @@ async function handleExport() {
 
     <section v-if="reportType === 'ai' && aiData" class="report-section" v-loading="loading">
       <div class="metric-grid">
-        <article class="metric-card metric-card--danger"><span>高风险客户</span><strong>{{ aiData.highRiskCount }}</strong><small>需要优先跟进</small></article>
-        <article class="metric-card metric-card--success"><span>平均 CLV</span><strong>¥{{ (aiData.clvAvg || 0).toLocaleString() }}</strong><small>客户终身价值</small></article>
-        <article class="metric-card metric-card--accent"><span>文案采纳率</span><strong>{{ aiData.copyAdoptionRate }}%</strong><small>AI 文案使用情况</small></article>
-        <article class="metric-card"><span>已评分客户</span><strong>{{ aiData.totalCustomersScored }}</strong><small>完成 AI 评分</small></article>
+        <StatCard label="高风险客户" :value="aiData.highRiskCount" note="需要优先跟进" tone="danger" :delay="0" />
+        <StatCard label="平均 CLV" :value="aiData.clvAvg || 0" prefix="¥" note="客户终身价值" tone="success" :delay="0.08" />
+        <StatCard label="文案采纳率" :value="aiData.copyAdoptionRate" suffix="%" note="AI 文案使用情况" tone="accent" :delay="0.16" />
+        <StatCard label="已评分客户" :value="aiData.totalCustomersScored" note="完成 AI 评分" tone="neutral" :delay="0.24" />
       </div>
 
       <div class="panel">
@@ -244,14 +245,14 @@ async function handleExport() {
 }
 
 .hero-kicker {
-  color: #0072b2;
+  color: var(--accent);
   font-size: 0.78rem;
   font-weight: 800;
 }
 
 .analytics-hero h1 {
   margin: 8px 0 0;
-  color: #111827;
+  color: var(--ink);
   font-size: 1.5rem;
   line-height: 1.2;
 }
@@ -259,7 +260,7 @@ async function handleExport() {
 .analytics-hero p {
   max-width: 660px;
   margin: 10px 0 0;
-  color: #6b7280;
+  color: var(--ink-muted);
 }
 
 .controls-panel {
@@ -269,9 +270,9 @@ async function handleExport() {
   gap: 12px;
   margin: 0 24px;
   padding: 16px;
-  border: 1px solid #e3e8ef;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
   flex-wrap: wrap;
 }
 
@@ -283,7 +284,7 @@ async function handleExport() {
 }
 
 .ctrl-sep {
-  color: #d1d5db;
+  color: var(--border-strong);
   font-size: 0.85rem;
 }
 
@@ -308,47 +309,11 @@ async function handleExport() {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.metric-card {
-  min-height: 116px;
-  padding: 18px;
-  border: 1px solid #e3e8ef;
-  border-top: 3px solid #0072b2;
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
-}
-
-.metric-card--success { border-top-color: #009e73; }
-.metric-card--accent { border-top-color: #56b4e9; }
-.metric-card--danger { border-top-color: #d55e00; }
-
-.metric-card span,
-.metric-card small {
-  display: block;
-  color: #6b7280;
-  font-size: 0.82rem;
-  font-weight: 700;
-}
-
-.metric-card strong {
-  display: block;
-  margin: 8px 0;
-  color: #111827;
-  font-size: 1.65rem;
-  line-height: 1;
-}
-
-.metric-card small {
-  color: #9ca3af;
-  font-size: 0.78rem;
-  font-weight: 500;
-}
-
 .panel {
   padding: 20px;
-  border: 1px solid #e3e8ef;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
 }
 
@@ -358,14 +323,14 @@ async function handleExport() {
 
 .panel-head h3 {
   margin: 0;
-  color: #111827;
+  color: var(--ink);
   font-size: 0.98rem;
   font-weight: 700;
 }
 
 .panel-head p {
   margin: 4px 0 0;
-  color: #9ca3af;
+  color: var(--ink-subtle);
   font-size: 0.8rem;
 }
 
@@ -389,7 +354,7 @@ async function handleExport() {
 .churn-bar-label {
   width: 80px;
   text-align: right;
-  color: #374151;
+  color: var(--ink);
   font-size: 0.85rem;
   font-weight: 500;
 }
@@ -398,7 +363,7 @@ async function handleExport() {
   flex: 1;
   height: 28px;
   border-radius: 6px;
-  background: #f3f4f6;
+  background: var(--bg);
   overflow: hidden;
 }
 
@@ -416,9 +381,9 @@ async function handleExport() {
   transition: width 0.5s ease;
 }
 
-.churn-高风险 { background: #d55e00; }
-.churn-中风险 { background: #e69f00; }
-.churn-低风险 { background: #009e73; }
+.churn-高风险 { background: var(--risk-high); }
+.churn-中风险 { background: var(--risk-medium); }
+.churn-低风险 { background: var(--risk-low); }
 
 @media (max-width: 900px) {
   .analytics-hero,

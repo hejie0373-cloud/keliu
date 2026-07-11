@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as billingApi from '@/api/billing'
 import type { PaymentOrder, Plan, Subscription } from '@/api/billing'
+import { getApiErrorMessage } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
@@ -136,8 +137,8 @@ async function upgrade(plan: Plan) {
     payStatus.value = order.status === 'paid' ? 'paid' : 'pending'
     payDialog.value = true
     startPaymentPolling(order.id)
-  } catch (e: any) {
-    ElMessage.error(e?.response?.data?.detail || e?.message || '创建订单失败')
+  } catch (e) {
+    ElMessage.error(getApiErrorMessage(e, '创建订单失败'))
   } finally { payingPlan.value = null }
 }
 
@@ -238,7 +239,7 @@ onBeforeUnmount(() => {
     </header>
 
     <!-- 当前套餐状态条 -->
-    <div v-if="currentPlanMeta" class="status-bar">
+    <div v-if="currentPlanMeta" class="status-bar" v-reveal>
       <div class="status-main">
         <span class="status-badge" :class="{ active: currentPlanMeta.active }">
           {{ currentPlanMeta.active ? '●' : '○' }} {{ currentPlanMeta.status }}
@@ -266,7 +267,7 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- 套餐卡片 -->
-    <section class="plan-cards">
+    <section class="plan-cards" v-reveal>
       <article
         v-for="plan in plans" :key="plan.code"
         class="plan-card"
@@ -408,28 +409,28 @@ onBeforeUnmount(() => {
 
 /* Hero */
 .page-hero { margin: 0; }
-.hero-kicker { color: #0072b2; font-size: 0.78rem; font-weight: 800; }
-.hero-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 8px 0 0; }
-.hero-desc { max-width: 660px; color: #6b7280; font-size: 0.92rem; margin-top: 10px; }
+.hero-kicker { color: var(--accent); font-size: 0.78rem; font-weight: 800; }
+.hero-title { font-size: 1.5rem; font-weight: 700; color: var(--ink); margin: 8px 0 0; }
+.hero-desc { max-width: 660px; color: var(--ink-muted); font-size: 0.92rem; margin-top: 10px; }
 
 /* Status bar */
 .status-bar {
-  background: #fff; border: 1px solid #e3e8ef; border-radius: 8px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
   padding: 18px;
   display: flex; align-items: center; gap: 32px; flex-wrap: wrap;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+  box-shadow: var(--shadow-sm);
 }
 .status-main { display: flex; align-items: center; gap: 10px; }
 .status-badge {
   font-size: 0.78rem; font-weight: 700; padding: 4px 10px; border-radius: 999px;
-  background: #fef2f2; color: #d55e00;
+  background: var(--danger-light); color: var(--danger);
 }
-.status-badge.active { background: #ecfdf5; color: #009e73; }
-.status-plan-name { font-size: 1.05rem; font-weight: 700; color: #111827; }
+.status-badge.active { background: var(--success-light); color: var(--success); }
+.status-plan-name { font-size: 1.05rem; font-weight: 700; color: var(--ink); }
 .status-items { display: flex; gap: 28px; flex-wrap: wrap; margin-left: auto; }
 .status-item { text-align: center; }
-.status-label { display: block; font-size: 0.73rem; color: #9CA3AF; margin-bottom: 2px; }
-.status-value { font-size: 0.88rem; font-weight: 600; color: #1a1a2e; }
+.status-label { display: block; font-size: 0.73rem; color: var(--ink-subtle); margin-bottom: 2px; }
+.status-value { font-size: 0.88rem; font-weight: 600; color: var(--ink); }
 
 /* Plan cards */
 .plan-cards {
@@ -441,35 +442,35 @@ onBeforeUnmount(() => {
 @media (max-width: 860px) { .plan-cards { grid-template-columns: 1fr; } }
 
 .plan-card {
-  background: #fff;
-  border: 1px solid #e3e8ef;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 32px 26px 28px;
   position: relative;
   overflow: hidden;
-  transition: all 0.25s;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
   display: flex; flex-direction: column;
 }
-.plan-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(15,23,42,0.08); }
+.plan-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
 .plan-card--current {
-  border-color: #0072b2;
-  box-shadow: 0 0 0 1px #0072b2, 0 4px 16px rgba(0,114,178,0.08);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), var(--shadow-sm);
 }
 .plan-card--premium {
-  background: linear-gradient(180deg, #f8fbfd 0%, #fff 30%);
+  background: linear-gradient(180deg, var(--surface-2) 0%, var(--surface) 34%);
 }
 
 /* Ribbon */
 .plan-ribbon {
   position: absolute; top: 14px; right: -32px;
-  background: #d55e00; color: #fff;
+  background: var(--danger); color: var(--accent-contrast);
   font-size: 0.72rem; font-weight: 700;
   padding: 3px 36px;
   transform: rotate(45deg);
   letter-spacing: 0.05em;
-  box-shadow: 0 2px 4px rgba(249,115,22,0.3);
+  box-shadow: var(--shadow-xs);
 }
-.plan-ribbon--current { background: #0072b2; box-shadow: 0 2px 4px rgba(0,114,178,0.3); }
+.plan-ribbon--current { background: var(--accent); box-shadow: var(--shadow-xs); }
 
 /* Header */
 .plan-header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
@@ -478,30 +479,30 @@ onBeforeUnmount(() => {
   display: flex; align-items: center; justify-content: center;
   font-size: 1.3rem; flex-shrink: 0;
 }
-.plan-icon--free { background: #F3F4F6; }
-.plan-icon--basic { background: #e6f2f8; }
-.plan-icon--professional { background: linear-gradient(135deg, #e6f2f8 0%, #ecfdf5 100%); }
-.plan-name { font-size: 1.05rem; font-weight: 700; color: #111827; margin: 0; }
-.plan-sub { font-size: 0.76rem; color: #9CA3AF; margin: 2px 0 0; }
+.plan-icon--free { background: var(--surface-2); }
+.plan-icon--basic { background: var(--accent-light); }
+.plan-icon--professional { background: linear-gradient(135deg, var(--accent-light) 0%, var(--success-light) 100%); }
+.plan-name { font-size: 1.05rem; font-weight: 700; color: var(--ink); margin: 0; }
+.plan-sub { font-size: 0.76rem; color: var(--ink-subtle); margin: 2px 0 0; }
 
 /* Price */
 .plan-price-row { margin-bottom: 22px; display: flex; align-items: baseline; gap: 2px; }
-.plan-price { font-size: 2rem; font-weight: 800; color: #0072b2; line-height: 1; }
-.plan-period { font-size: 0.85rem; color: #9CA3AF; }
+.plan-price { font-size: 2rem; font-weight: 800; color: var(--accent); line-height: 1; }
+.plan-period { font-size: 0.85rem; color: var(--ink-subtle); }
 
 /* Features */
 .plan-features { list-style: none; padding: 0; margin: 0 0 24px; flex: 1; }
 .plan-features li {
   display: flex; align-items: center; gap: 8px;
-  padding: 9px 0; border-bottom: 1px solid #F9FAFB;
-  font-size: 0.87rem; color: #4B5563;
+  padding: 9px 0; border-bottom: 1px solid var(--border);
+  font-size: 0.87rem; color: var(--ink-muted);
 }
 .plan-features li:last-child { border-bottom: none; }
 .feat-dot {
-  width: 6px; height: 6px; border-radius: 50%; background: #0072b2;
+  width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
   flex-shrink: 0; margin-right: 2px;
 }
-.feat-dot--off { background: #D1D5DB; }
+.feat-dot--off { background: var(--border-strong); }
 
 /* Buttons */
 .plan-btn {
@@ -509,42 +510,42 @@ onBeforeUnmount(() => {
   font-size: 0.92rem; font-weight: 600; cursor: pointer;
   transition: all 0.2s;
 }
-.plan-btn--current { background: #F3F4F6; color: #6B7280; }
-.plan-btn--free { background: #F9FAFB; color: #9CA3AF; }
+.plan-btn--current { background: var(--surface-2); color: var(--ink-muted); }
+.plan-btn--free { background: var(--surface-2); color: var(--ink-subtle); }
 .plan-btn--upgrade {
-  background: #0072b2; color: #fff;
-  box-shadow: 0 4px 12px rgba(0,114,178,0.2);
+  background: var(--accent); color: var(--accent-contrast);
+  box-shadow: var(--shadow-accent);
 }
-.plan-btn--upgrade:hover { background: #005f95; }
+.plan-btn--upgrade:hover { background: var(--accent-hover); }
 .plan-btn--upgrade:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* Footer */
 .billing-footer { text-align: center; }
-.billing-footer p { font-size: 0.82rem; color: #9CA3AF; margin: 0; }
+.billing-footer p { font-size: 0.82rem; color: var(--ink-subtle); margin: 0; }
 
 /* Pay modal */
 .pay-modal { text-align: center; padding: 8px 4px; }
 
 /* 成功 */
 .pay-success { padding: 30px 0; }
-.success-icon { width: 64px; height: 64px; border-radius: 50%; background: #16A34A; color: #fff; font-size: 2rem; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
-.pay-success h3 { margin: 0 0 6px; font-size: 1.2rem; color: #1a1a2e; }
-.pay-success p { color: #9CA3AF; font-size: 0.88rem; margin: 0; }
+.success-icon { width: 64px; height: 64px; border-radius: 50%; background: var(--success); color: var(--accent-contrast); font-size: 2rem; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
+.pay-success h3 { margin: 0 0 6px; font-size: 1.2rem; color: var(--ink); }
+.pay-success p { color: var(--ink-subtle); font-size: 0.88rem; margin: 0; }
 
 /* 品牌 */
 .pay-brand { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 24px; }
 .alipay-logo { width: 44px; height: 44px; border-radius: 12px; background: #1677FF; display: flex; align-items: center; justify-content: center; }
-.pay-brand-name { font-size: 1.05rem; font-weight: 700; color: #1a1a2e; text-align: left; }
-.pay-brand-sub { font-size: 0.76rem; color: #9CA3AF; text-align: left; }
+.pay-brand-name { font-size: 1.05rem; font-weight: 700; color: var(--ink); text-align: left; }
+.pay-brand-sub { font-size: 0.76rem; color: var(--ink-subtle); text-align: left; }
 
 /* 订单信息 */
-.pay-info { display: flex; align-items: baseline; justify-content: center; gap: 8px; margin-bottom: 20px; padding: 20px; background: linear-gradient(135deg, #EFF6FF, #F5F3FF); border-radius: 14px; }
-.pay-plan-name { font-size: 0.95rem; color: #6B7280; font-weight: 600; }
+.pay-info { display: flex; align-items: baseline; justify-content: center; gap: 8px; margin-bottom: 20px; padding: 20px; background: var(--surface-2); border-radius: 14px; }
+.pay-plan-name { font-size: 0.95rem; color: var(--ink-muted); font-weight: 600; }
 .pay-amount { font-size: 2.2rem; font-weight: 800; color: #1677FF; }
-.pay-period { font-size: 0.85rem; color: #9CA3AF; }
+.pay-period { font-size: 0.85rem; color: var(--ink-subtle); }
 
 /* 状态提示 */
-.pay-tip { font-size: 0.85rem; color: #6B7280; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 20px; }
+.pay-tip { font-size: 0.85rem; color: var(--ink-muted); margin-bottom: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 20px; }
 .pay-tip.paying { color: #1677FF; }
 .tip-spin { width: 14px; height: 14px; border: 2px solid #DBEAFE; border-top-color: #1677FF; border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -559,20 +560,20 @@ onBeforeUnmount(() => {
 .pay-main-btn:hover { background: #0E5FD8; }
 
 /* 沙箱提示 */
-.pay-sandbox-hint { background: #F9FAFB; border: 1px dashed #E5E7EB; border-radius: 10px; padding: 12px 16px; margin-bottom: 16px; text-align: left; }
-.hint-title { font-size: 0.82rem; font-weight: 600; color: #374151; margin-bottom: 6px; }
-.hint-row { font-size: 0.78rem; color: #9CA3AF; line-height: 1.6; font-family: monospace; }
+.pay-sandbox-hint { background: var(--surface-2); border: 1px dashed var(--border); border-radius: 10px; padding: 12px 16px; margin-bottom: 16px; text-align: left; }
+.hint-title { font-size: 0.82rem; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
+.hint-row { font-size: 0.78rem; color: var(--ink-subtle); line-height: 1.6; font-family: monospace; }
 
 /* 次要操作 */
 .pay-sub-actions { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
 .sub-btn {
-  width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #E5E7EB;
-  background: #fff; color: #374151; font-size: 0.85rem; cursor: pointer; transition: all 0.2s;
+  width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--ink); font-size: 0.85rem; cursor: pointer; transition: all 0.2s;
 }
 .sub-btn:hover { border-color: #1677FF; color: #1677FF; }
-.sub-btn--mock { border-style: dashed; color: #9CA3AF; }
-.sub-btn--mock:hover { border-color: #16A34A; color: #16A34A; }
+.sub-btn--mock { border-style: dashed; color: var(--ink-subtle); }
+.sub-btn--mock:hover { border-color: var(--success); color: var(--success); }
 
-.pay-cancel { background: none; border: none; color: #9CA3AF; font-size: 0.82rem; cursor: pointer; padding: 4px; }
-.pay-cancel:hover { color: #6B7280; }
+.pay-cancel { background: none; border: none; color: var(--ink-subtle); font-size: 0.82rem; cursor: pointer; padding: 4px; }
+.pay-cancel:hover { color: var(--ink-muted); }
 </style>

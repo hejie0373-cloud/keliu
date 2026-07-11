@@ -5,6 +5,7 @@ import * as billingApi from '@/api/billing'
 import type { Subscription } from '@/api/billing'
 import AIChatWidget from '@/components/AIChatWidget.vue'
 import { useWebSocket } from '@/composables/useWebSocket'
+import { useTheme } from '@/composables/useTheme'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationStore } from '@/stores/notification'
 
@@ -15,9 +16,11 @@ const notif = useNotificationStore()
 void notif
 const router = useRouter()
 const route = useRoute()
+const { theme, toggleTheme } = useTheme()
 const PAYMENT_RESULT_KEY = 'keliu:alipay-payment-result'
 
 const merchantSubscription = ref<Subscription | null>(null)
+const mobileMenuOpen = ref(false)
 
 const showNav = computed(() => auth.isLoggedIn && !route.meta.public && !route.path.startsWith('/auth/'))
 const isAdmin = computed(() => auth.roles.includes('super_admin'))
@@ -48,7 +51,7 @@ async function loadMerchantSubscription() {
     return
   }
   try {
-    const { data } = await billingApi.getSubscription()
+    const { data } = await billingApi.getSubscription({ silentError: true })
     merchantSubscription.value = data
   } catch {
     // 订阅信息加载失败不阻塞页面
@@ -67,13 +70,19 @@ watch(
 watch(
   () => route.path,
   () => {
+    mobileMenuOpen.value = false
     void loadMerchantSubscription()
   },
 )
 
 async function handleLogout() {
+  mobileMenuOpen.value = false
   await auth.logout()
   router.push('/auth/signin')
+}
+
+function closeMobileMenu() {
+  mobileMenuOpen.value = false
 }
 
 async function loadPaymentResult(order: any) {
@@ -111,7 +120,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="app-shell">
-    <aside v-if="showNav" class="sidebar">
+    <aside v-if="showNav" :class="['sidebar', { 'sidebar--open': mobileMenuOpen }]">
       <div class="sidebar-brand">
         <span class="brand-icon">客</span>
         <div class="brand-copy">
@@ -123,40 +132,40 @@ onBeforeUnmount(() => {
       <nav class="sidebar-nav">
         <template v-if="isAdmin">
           <div class="nav-group-title">平台</div>
-          <router-link to="/admin" class="nav-item" active-class="nav-item--active">
+          <router-link to="/admin" class="nav-item" active-class="nav-item--active" @click="closeMobileMenu">
             <span class="nav-icon">⌂</span><span>平台总览</span>
           </router-link>
-          <router-link to="/admin/stores" class="nav-item" active-class="nav-item--active">
+          <router-link to="/admin/stores" class="nav-item" active-class="nav-item--active" @click="closeMobileMenu">
             <span class="nav-icon">店</span><span>店铺管理</span>
           </router-link>
-          <router-link to="/admin/payment-orders" class="nav-item" active-class="nav-item--active">
+          <router-link to="/admin/payment-orders" class="nav-item" active-class="nav-item--active" @click="closeMobileMenu">
             <span class="nav-icon">¥</span><span>支付订单</span>
           </router-link>
           <div class="nav-group-title">账号</div>
-          <router-link to="/settings" class="nav-item" active-class="nav-item--active">
+          <router-link to="/settings" class="nav-item" active-class="nav-item--active" @click="closeMobileMenu">
             <span class="nav-icon">设</span><span>个人中心</span>
           </router-link>
         </template>
 
         <template v-else>
           <div class="nav-group-title">工作台</div>
-          <router-link to="/dashboard" class="nav-item" active-class="nav-item--active">
+          <router-link to="/dashboard" class="nav-item" active-class="nav-item--active" @click="closeMobileMenu">
             <span class="nav-icon">仪</span><span>仪表盘</span>
           </router-link>
-          <router-link to="/customers" class="nav-item" active-class="nav-item--active">
+          <router-link to="/customers" class="nav-item" active-class="nav-item--active" @click="closeMobileMenu">
             <span class="nav-icon">客</span><span>客户管理</span>
           </router-link>
-          <router-link to="/campaigns" class="nav-item" active-class="nav-item--active">
+          <router-link to="/campaigns" class="nav-item" active-class="nav-item--active" @click="closeMobileMenu">
             <span class="nav-icon">营</span><span>营销活动</span>
           </router-link>
-          <router-link to="/analytics" class="nav-item" active-class="nav-item--active">
+          <router-link to="/analytics" class="nav-item" active-class="nav-item--active" @click="closeMobileMenu">
             <span class="nav-icon">析</span><span>数据分析</span>
           </router-link>
           <div class="nav-group-title">商业化</div>
-          <router-link to="/billing" class="nav-item" active-class="nav-item--active">
+          <router-link to="/billing" class="nav-item" active-class="nav-item--active" @click="closeMobileMenu">
             <span class="nav-icon">¥</span><span>订阅支付</span>
           </router-link>
-          <router-link to="/settings" class="nav-item" active-class="nav-item--active">
+          <router-link to="/settings" class="nav-item" active-class="nav-item--active" @click="closeMobileMenu">
             <span class="nav-icon">设</span><span>个人中心</span>
           </router-link>
         </template>
@@ -189,9 +198,24 @@ onBeforeUnmount(() => {
         <button class="logout-btn" @click="handleLogout">退出登录</button>
       </div>
     </aside>
+    <button
+      v-if="showNav && mobileMenuOpen"
+      class="mobile-nav-backdrop"
+      type="button"
+      aria-label="关闭导航"
+      @click="closeMobileMenu"
+    />
 
     <main :class="['main-content', { 'main-content--full': !showNav }]">
       <header v-if="showNav" class="topbar">
+        <button
+          class="mobile-menu-btn"
+          type="button"
+          aria-label="打开导航"
+          @click="mobileMenuOpen = true"
+        >
+          ☰
+        </button>
         <div class="topbar-title">
           <span class="topbar-kicker">{{ currentSection }}</span>
           <h1>{{ isAdmin ? '平台后台' : '商家工作台' }}</h1>
@@ -201,6 +225,15 @@ onBeforeUnmount(() => {
             <span>当前套餐</span>
             <strong>{{ merchantSubscription?.planDisplayName || merchantSubscription?.planName || '免费版' }}</strong>
           </router-link>
+          <button
+            v-if="!isAdmin"
+            class="theme-btn"
+            type="button"
+            :title="theme === 'dark' ? '切换到浅色' : '切换到深色'"
+            @click="toggleTheme"
+          >
+            {{ theme === 'dark' ? '☀' : '☾' }}
+          </button>
           <button class="ghost-btn" type="button" @click="handleLogout">退出</button>
         </div>
       </header>
@@ -219,7 +252,7 @@ onBeforeUnmount(() => {
   display: flex;
   min-height: 100vh;
   background:
-    linear-gradient(180deg, rgba(0, 114, 178, 0.06), transparent 260px),
+    var(--halo),
     var(--bg);
 }
 
@@ -236,6 +269,11 @@ onBeforeUnmount(() => {
   z-index: 100;
 }
 
+.mobile-menu-btn,
+.mobile-nav-backdrop {
+  display: none;
+}
+
 .sidebar-brand {
   display: flex;
   align-items: center;
@@ -248,7 +286,7 @@ onBeforeUnmount(() => {
 .brand-icon {
   width: 40px;
   height: 40px;
-  background: #0072b2;
+  background: var(--grad-brand);
   border-radius: 10px;
   display: flex;
   align-items: center;
@@ -461,7 +499,7 @@ onBeforeUnmount(() => {
 }
 
 .topbar-kicker {
-  color: #0072b2;
+  color: var(--accent);
   font-size: 0.78rem;
   font-weight: 800;
 }
@@ -508,8 +546,8 @@ onBeforeUnmount(() => {
 }
 
 .ghost-btn:hover {
-  border-color: #0072b2;
-  color: #0072b2;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .content-frame {
@@ -521,22 +559,174 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 820px) {
+  .app-shell {
+    display: block;
+  }
+
   .sidebar {
-    width: 216px;
+    width: min(78vw, 288px);
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    box-shadow: 18px 0 48px rgba(15, 23, 42, 0.26);
+  }
+
+  .sidebar--open {
+    transform: translateX(0);
+  }
+
+  .mobile-nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    border: 0;
+    background: rgba(15, 23, 42, 0.38);
+    backdrop-filter: blur(2px);
+    cursor: pointer;
+  }
+
+  .sidebar-brand {
+    min-height: 72px;
+    padding: 16px 18px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .brand-sub {
+    display: inline;
+  }
+
+  .sidebar-nav {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 14px;
+  }
+
+  .sidebar-footer {
+    display: block;
+  }
+
+  .nav-item {
+    min-height: 44px;
+    white-space: normal;
   }
 
   .main-content {
-    margin-left: 216px;
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .main-content--full {
+    margin-left: 0;
   }
 
   .topbar {
-    flex-direction: column;
-    align-items: flex-start;
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr);
+    align-items: center;
     gap: 12px;
+    padding: 14px 16px;
+  }
+
+  .mobile-menu-btn {
+    width: 38px;
+    height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    border: 1px solid #dbe3ec;
+    border-radius: 8px;
+    background: #fff;
+    color: #111827;
+    font-size: 1.05rem;
+    cursor: pointer;
+  }
+
+  .topbar-title {
+    min-width: 0;
+  }
+
+  .topbar h1,
+  .topbar-kicker {
+    word-break: keep-all;
+  }
+
+  .topbar-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
   }
 
   .content-frame {
     padding: 16px;
   }
+
+  .content-frame--full {
+    padding: 0;
+  }
+}
+
+@media (max-width: 560px) {
+  .brand-icon {
+    width: 34px;
+    height: 34px;
+  }
+
+  .brand-text {
+    font-size: 0.98rem;
+  }
+
+  .topbar-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+}
+
+/* 主题切换按钮 */
+.theme-btn {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #dbe3ec;
+  border-radius: 8px;
+  background: #fff;
+  color: #374151;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.theme-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ---- 深色模式覆盖（仅商家端；管理端有独立主题）---- */
+[data-theme='dark'] .app-shell {
+  background:
+    radial-gradient(1200px 400px at 20% -10%, rgba(99, 91, 255, 0.10), transparent 60%),
+    var(--bg);
+}
+
+[data-theme='dark'] .topbar {
+  background: color-mix(in oklch, var(--surface) 82%, transparent);
+  border-bottom-color: var(--border);
+}
+
+[data-theme='dark'] .topbar h1 {
+  color: var(--ink);
+}
+
+[data-theme='dark'] .quota-pill,
+[data-theme='dark'] .theme-btn,
+[data-theme='dark'] .ghost-btn {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--ink-muted);
+}
+
+[data-theme='dark'] .quota-pill strong {
+  color: var(--ink);
 }
 </style>

@@ -62,8 +62,8 @@ export interface AdminSubscriptionUpdate {
 export const getPlans = () =>
   http.get<Plan[]>('/billing/plans')
 
-export const getSubscription = () =>
-  http.get<Subscription>('/billing/subscription')
+export const getSubscription = (options?: { silentError?: boolean }) =>
+  http.get<Subscription>('/billing/subscription', options)
 
 export const createOrder = (planName: string, provider = 'mock') =>
   http.post<PaymentOrder>('/billing/orders', { planName, provider })
